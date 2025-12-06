@@ -101,15 +101,17 @@ func (s *JWTService) ValidateToken(tokenString string) (*TokenClaims, error) {
 }
 
 // RevokeUserTokens revokes all tokens for a specific user
-func (s *JWTService) RevokeUserTokens(userID int64) {
+func (s *JWTService) RevokeUserTokens(userID int64) error {
 	if s.revocationStore != nil {
-		s.revocationStore.RevokeAllUserTokens(userID)
+		return s.revocationStore.RevokeAllUserTokens(userID)
 	}
+	return nil
 }
 
 // RevokeUserTokensBefore revokes all tokens for a user issued before the given time
-func (s *JWTService) RevokeUserTokensBefore(userID int64, before time.Time) {
+func (s *JWTService) RevokeUserTokensBefore(userID int64, before time.Time) error {
 	if s.revocationStore != nil {
-		s.revocationStore.RevokeUserTokensBefore(userID, before)
+		return s.revocationStore.RevokeUserTokensBefore(userID, before)
 	}
+	return nil
 }

@@ -14,11 +14,12 @@ type ENV struct {
 
 	ServerName string `yaml:"server_name"`
 
-	Backend *BackendHost `yaml:"backend"`
+	Backend  *BackendHost  `yaml:"backend"`
+	Frontend *FrontendHost `yaml:"frontend"`
 
-	JWTSigningKey     string `yaml:"jwt_signing_key"`
-	JWTTokenDuration  string `yaml:"jwt_token_duration"`
-	JWTSigningKeyUser string `yaml:"jwt_signing_key_user"`
+	JWTSigningKey       string `yaml:"jwt_signing_key"`
+	JWTTokenDuration    string `yaml:"jwt_token_duration"`
+	TokenRevokeDuration string `yaml:"token_revoke_duration"`
 
 	TimeZoneOffset int    `yaml:"time_zone_offset"`
 	TimeZoneName   string `yaml:"time_zone_name"`
@@ -31,6 +32,11 @@ type BackendHost struct {
 	HTTPHost   string `yaml:"host_http"`
 	SocketHost string `yaml:"host_socket"`
 	Port       string `yaml:"port"`
+}
+
+// FrontendHost holds frontend configuration
+type FrontendHost struct {
+	APIBaseURL string `yaml:"api_base_url"`
 }
 
 // Features holds feature flags
@@ -51,12 +57,32 @@ func (env *ENV) GetJWTDuration() time.Duration {
 	return duration
 }
 
+// GetRevokeDuration returns token revocation duration as time.Duration
+func (env *ENV) GetRevokeDuration() time.Duration {
+	if env == nil || env.TokenRevokeDuration == "" {
+		return 24 * time.Hour
+	}
+	duration, err := time.ParseDuration(env.TokenRevokeDuration)
+	if err != nil {
+		return 24 * time.Hour
+	}
+	return duration
+}
+
 // GetServerPort returns the server port
 func (env *ENV) GetServerPort() string {
 	if env == nil || env.Backend == nil || env.Backend.Port == "" {
 		return "8080"
 	}
 	return env.Backend.Port
+}
+
+// GetAPIBaseURL returns the API base URL for frontend
+func (env *ENV) GetAPIBaseURL() string {
+	if env == nil || env.Frontend == nil || env.Frontend.APIBaseURL == "" {
+		return "http://localhost:8080"
+	}
+	return env.Frontend.APIBaseURL
 }
 
 // IsDevelopment returns true if environment is development
@@ -85,6 +111,12 @@ func (env *ENV) SetDefaults() {
 	}
 	if env.Backend.HTTPHost == "" {
 		env.Backend.HTTPHost = "localhost"
+	}
+	if env.Frontend == nil {
+		env.Frontend = &FrontendHost{}
+	}
+	if env.Frontend.APIBaseURL == "" {
+		env.Frontend.APIBaseURL = "http://localhost:" + env.Backend.Port
 	}
 	if env.JWTSigningKey == "" {
 		env.JWTSigningKey = "your-256-bit-secret-key-here-change-in-production"

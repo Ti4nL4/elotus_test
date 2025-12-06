@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Image Upload</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <a href="/dashboard.html" class="header-logo">
+                <span class="logo-icon">📷</span>
+                <span>Image Upload</span>
+            </a>
+            <nav class="header-nav">
+                <span class="user-info">Hi, <strong id="usernameDisplay">User</strong></span>
+                <a href="/dashboard.html" class="btn btn-primary btn-sm">Upload</a>
+                <a href="/uploads.html" class="btn btn-outline btn-sm">My Uploads</a>
+                <button onclick="logout()" class="btn btn-outline btn-sm">Logout</button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Upload Section -->
+            <section class="upload-section">
+                <h2>📤 Upload Image</h2>
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-placeholder" id="uploadPlaceholder">
+                        <span class="upload-icon">🖼️</span>
+                        <p>Drag and drop your image here or</p>
+                        <label for="fileInput" class="btn btn-primary" style="cursor: pointer;">Choose File</label>
+                        <input type="file" id="fileInput" accept="image/*" style="display: none;">
+                        <p class="upload-hint">Supported: JPG, PNG, GIF, WebP (Max 8MB)</p>
+                    </div>
+                    <div class="upload-preview" id="uploadPreview" style="display: none;">
+                        <img id="previewImage" src="" alt="Preview">
+                        <div class="preview-info">
+                            <p id="fileName"></p>
+                            <p id="fileSize"></p>
+                        </div>
+                        <button onclick="clearPreview()" class="btn btn-outline btn-sm">Remove</button>
+                    </div>
+                </div>
+                <button onclick="uploadFile()" id="uploadBtn" class="btn btn-success btn-block" disabled>
+                    <span id="uploadBtnText">Upload</span>
+                </button>
+            </section>
+
+            <!-- Upload Result -->
+            <section class="result-section" id="resultSection" style="display: none;">
+                <h2>✅ Upload Successful</h2>
+                <div class="result-card">
+                    <div class="result-info">
+                        <div class="info-row">
+                            <span class="label">File ID:</span>
+                            <span id="resultFileId" class="value"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">File Name:</span>
+                            <span id="resultFileName" class="value"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">Content Type:</span>
+                            <span id="resultContentType" class="value"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">File Size:</span>
+                            <span id="resultFileSize" class="value"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">File Path:</span>
+                            <span id="resultPath" class="value path"></span>
+                        </div>
+                    </div>
+                    <button onclick="uploadAnother()" class="btn btn-primary">Upload Another File</button>
+                </div>
+            </section>
+
+            <!-- Error Section -->
+            <div id="errorSection" class="error-section" style="display: none;">
+                <p id="errorText"></p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>Server: <span id="serverInfo">-</span> | Environment: <span id="envInfo">-</span></p>
+    </footer>
+
+    <script src="/config.js"></script>
+    <script>
+        const API_BASE = (typeof CONFIG !== 'undefined') ? CONFIG.API_BASE : 'http://localhost:8080';
+        let selectedFile = null;
+
+        // Check authentication
+        const token = localStorage.getItem('jwt_token');
+        if (!token) {
+            window.location.href = '/index.html';
+        }
+
+        // Display user info
+        const username = localStorage.getItem('username') || 'User';
+        document.getElementById('usernameDisplay').textContent = username;
+
+        // Display server info
+        if (typeof CONFIG !== 'undefined') {
+            document.getElementById('serverInfo').textContent = CONFIG.API_BASE;
+            document.getElementById('envInfo').textContent = CONFIG.ENVIRONMENT;
+        }
+
+        // Logout function
+        function logout() {
+            localStorage.removeItem('jwt_token');
+            localStorage.removeItem('username');
+            window.location.href = '/index.html';
+        }
+
+        // File input handling
+        const fileInput = document.getElementById('fileInput');
+        const uploadArea = document.getElementById('uploadArea');
+        const uploadPlaceholder = document.getElementById('uploadPlaceholder');
+
+        console.log('fileInput:', fileInput);
+        console.log('uploadArea:', uploadArea);
+
+        if (fileInput) {
+            fileInput.addEventListener('change', (e) => {
+                console.log('File input change event fired');
+                const file = e.target.files[0];
+                console.log('Selected file:', file);
+                if (file) handleFileSelect(file);
+            });
+
+            // Click on placeholder area to trigger file selection
+            if (uploadPlaceholder) {
+                uploadPlaceholder.addEventListener('click', (e) => {
+                    // Only trigger if not clicking on the label itself (it has its own for="fileInput")
+                    if (e.target.tagName !== 'LABEL' && e.target.tagName !== 'INPUT') {
+                        console.log('Placeholder clicked, triggering file input');
+                        fileInput.click();
+                    }
+                });
+            }
+        }
+
+        // Drag and drop
+        if (uploadArea) {
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('dragover');
+            });
+
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                console.log('Drop event fired');
+                uploadArea.classList.remove('dragover');
+                const file = e.dataTransfer.files[0];
+                console.log('Dropped file:', file);
+                if (file && file.type.startsWith('image/')) {
+                    handleFileSelect(file);
+                } else {
+                    console.log('Invalid file type or no file');
+                }
+            });
+        }
+
+        function handleFileSelect(file) {
+            console.log('handleFileSelect called with:', file.name, file.type, file.size);
+            
+            // Validate file size (8MB)
+            if (file.size > 8 * 1024 * 1024) {
+                showError('File is too large. Maximum size is 8MB.');
+                return;
+            }
+
+            // Validate file type
+            if (!file.type.startsWith('image/')) {
+                showError('Only image files are accepted.');
+                return;
+            }
+
+            selectedFile = file;
+            console.log('File accepted, showing preview');
+            
+            // Show preview
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                console.log('FileReader loaded');
+                document.getElementById('previewImage').src = e.target.result;
+                document.getElementById('fileName').textContent = file.name;
+                document.getElementById('fileSize').textContent = formatFileSize(file.size);
+                document.querySelector('.upload-placeholder').style.display = 'none';
+                document.getElementById('uploadPreview').style.display = 'flex';
+                document.getElementById('uploadBtn').disabled = false;
+            };
+            reader.onerror = (e) => {
+                console.error('FileReader error:', e);
+            };
+            reader.readAsDataURL(file);
+
+            hideError();
+        }
+
+        function clearPreview() {
+            selectedFile = null;
+            fileInput.value = '';
+            document.querySelector('.upload-placeholder').style.display = 'block';
+            document.getElementById('uploadPreview').style.display = 'none';
+            document.getElementById('uploadBtn').disabled = true;
+        }
+
+        async function uploadFile() {
+            if (!selectedFile) return;
+
+            const uploadBtn = document.getElementById('uploadBtn');
+            const uploadBtnText = document.getElementById('uploadBtnText');
+            
+            uploadBtn.disabled = true;
+            uploadBtnText.textContent = 'Uploading...';
+            hideError();
+
+            const formData = new FormData();
+            formData.append('image', selectedFile);
+
+            console.log('Uploading file:', selectedFile.name, 'Size:', selectedFile.size);
+            console.log('API URL:', `${API_BASE}/api/upload`);
+
+            try {
+                const response = await fetch(`${API_BASE}/api/upload`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: formData
+                });
+
+                console.log('Response status:', response.status);
+                const data = await response.json();
+                console.log('Response data:', data);
+
+                if (data.success) {
+                    showResult(data);
+                } else {
+                    showError(data.error || 'Upload failed: ' + JSON.stringify(data));
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                showError('Cannot connect to server: ' + error.message);
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtnText.textContent = 'Upload';
+            }
+        }
+
+        function showResult(data) {
+            document.querySelector('.upload-section').style.display = 'none';
+            document.getElementById('resultSection').style.display = 'block';
+
+            document.getElementById('resultFileId').textContent = data.data.file_id;
+            document.getElementById('resultFileName').textContent = data.data.original_filename;
+            document.getElementById('resultContentType').textContent = data.data.content_type;
+            document.getElementById('resultFileSize').textContent = formatFileSize(data.data.file_size);
+            document.getElementById('resultPath').textContent = data.absolute_url;
+        }
+
+        function uploadAnother() {
+            clearPreview();
+            document.querySelector('.upload-section').style.display = 'block';
+            document.getElementById('resultSection').style.display = 'none';
+        }
+
+        function showError(message) {
+            document.getElementById('errorText').textContent = message;
+            document.getElementById('errorSection').style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('errorSection').style.display = 'none';
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+    </script>
+</body>
+</html>

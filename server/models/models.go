@@ -7,6 +7,7 @@ import (
 	"elotus_test/server/cmd"
 	"elotus_test/server/env"
 	"elotus_test/server/models/auth"
+	"elotus_test/server/models/upload"
 	"elotus_test/server/models/user"
 	"elotus_test/server/psql"
 )
@@ -15,9 +16,11 @@ import (
 type Models struct {
 	db              *bsql.DB
 	userStore       user.Repository
+	uploadStore     upload.Repository
 	revocationStore *auth.TokenRevocationStore
 	jwtService      *auth.JWTService
 	authHandler     *auth.Handler
+	uploadHandler   *upload.Handler
 }
 
 // NewModels creates and initializes all application components
@@ -58,8 +61,12 @@ func NewModels(cmdMode bool) *Models {
 	m.userStore = user.NewPostgresRepository(m.db)
 	log.Println("Using PostgreSQL for user storage")
 
-	// Initialize token revocation store
-	m.revocationStore = auth.NewTokenRevocationStore()
+	// Initialize upload repository
+	m.uploadStore = upload.NewPostgresRepository(m.db)
+	log.Println("Using PostgreSQL for file upload storage")
+
+	// Initialize token revocation store (DB-based)
+	m.revocationStore = auth.NewTokenRevocationStore(m.db)
 
 	// Initialize JWT service
 	jwtConfig := &auth.Config{
@@ -70,6 +77,9 @@ func NewModels(cmdMode bool) *Models {
 
 	// Initialize auth handler
 	m.authHandler = auth.NewHandler(m.userStore, m.jwtService)
+
+	// Initialize upload handler
+	m.uploadHandler = upload.NewHandler(m.db, m.uploadStore)
 
 	if !cmdMode {
 		m.SetupRoutes()

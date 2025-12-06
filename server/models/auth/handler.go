@@ -123,20 +123,26 @@ func (h *Handler) RevokeToken(c echo.Context) error {
 	var req RevokeRequest
 	if err := c.Bind(&req); err != nil {
 		// If no body, revoke all current tokens for the user
-		h.jwtService.RevokeUserTokens(claims.UserID)
+		if err := h.jwtService.RevokeUserTokens(claims.UserID); err != nil {
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to revoke tokens"})
+		}
 		return c.JSON(http.StatusOK, echo.Map{
 			"message": "All tokens have been revoked",
 		})
 	}
 
 	if req.RevokeBeforeTime != nil {
-		h.jwtService.RevokeUserTokensBefore(claims.UserID, *req.RevokeBeforeTime)
+		if err := h.jwtService.RevokeUserTokensBefore(claims.UserID, *req.RevokeBeforeTime); err != nil {
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to revoke tokens"})
+		}
 		return c.JSON(http.StatusOK, echo.Map{
 			"message": "Tokens issued before " + req.RevokeBeforeTime.Format(time.RFC3339) + " have been revoked",
 		})
 	}
 
-	h.jwtService.RevokeUserTokens(claims.UserID)
+	if err := h.jwtService.RevokeUserTokens(claims.UserID); err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to revoke tokens"})
+	}
 	return c.JSON(http.StatusOK, echo.Map{
 		"message": "All tokens have been revoked",
 	})

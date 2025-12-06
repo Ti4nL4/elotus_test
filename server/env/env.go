@@ -24,8 +24,6 @@ type ENV struct {
 	TimeZoneName   string `yaml:"time_zone_name"`
 
 	Features *Features `yaml:"features"`
-
-	UsePostgres bool `yaml:"use_postgres"`
 }
 
 // BackendHost holds backend server configuration

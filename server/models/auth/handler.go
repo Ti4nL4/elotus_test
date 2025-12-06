@@ -1,12 +1,12 @@
 package auth
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
 	"elotus_test/server/models/user"
 
+	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -48,47 +48,36 @@ type RevokeRequest struct {
 }
 
 // Register handles user registration
-func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		respondWithError(w, http.StatusMethodNotAllowed, "Method not allowed")
-		return
-	}
-
+func (h *Handler) Register(c echo.Context) error {
 	var req RegisterRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid request body")
-		return
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request body"})
 	}
 
 	if req.Username == "" || req.Password == "" {
-		respondWithError(w, http.StatusBadRequest, "Username and password are required")
-		return
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Username and password are required"})
 	}
 
 	if len(req.Password) < 6 {
-		respondWithError(w, http.StatusBadRequest, "Password must be at least 6 characters")
-		return
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Password must be at least 6 characters"})
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Failed to process password")
-		return
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to process password"})
 	}
 
 	u, err := h.userRepo.CreateUser(req.Username, string(hashedPassword))
 	if err != nil {
 		if err == user.ErrUserExists {
-			respondWithError(w, http.StatusConflict, "Username already exists")
-			return
+			return c.JSON(http.StatusConflict, echo.Map{"error": "Username already exists"})
 		}
-		respondWithError(w, http.StatusInternalServerError, "Failed to create user")
-		return
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to create user"})
 	}
 
-	respondWithJSON(w, http.StatusCreated, map[string]interface{}{
+	return c.JSON(http.StatusCreated, echo.Map{
 		"message": "User registered successfully",
-		"user": map[string]interface{}{
+		"user": echo.Map{
 			"id":         u.ID,
 			"username":   u.Username,
 			"created_at": u.CreatedAt,
@@ -97,91 +86,67 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 // Login handles user login
-func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		respondWithError(w, http.StatusMethodNotAllowed, "Method not allowed")
-		return
-	}
-
+func (h *Handler) Login(c echo.Context) error {
 	var req LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid request body")
-		return
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request body"})
 	}
 
 	if req.Username == "" || req.Password == "" {
-		respondWithError(w, http.StatusBadRequest, "Username and password are required")
-		return
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Username and password are required"})
 	}
 
 	u, exists := h.userRepo.GetUserByUsername(req.Username)
 	if !exists {
-		respondWithError(w, http.StatusUnauthorized, "Invalid username or password")
-		return
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Invalid username or password"})
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(req.Password)); err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Invalid username or password")
-		return
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Invalid username or password"})
 	}
 
 	token, expiresAt, err := h.jwtService.GenerateToken(u.ID, u.Username)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Failed to generate token")
-		return
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to generate token"})
 	}
 
-	respondWithJSON(w, http.StatusOK, LoginResponse{
+	return c.JSON(http.StatusOK, LoginResponse{
 		Token:     token,
 		ExpiresAt: expiresAt,
 	})
 }
 
 // RevokeToken handles token revocation by time
-func (h *Handler) RevokeToken(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		respondWithError(w, http.StatusMethodNotAllowed, "Method not allowed")
-		return
-	}
-
-	claims, ok := r.Context().Value(UserContextKey).(*TokenClaims)
-	if !ok {
-		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
-		return
-	}
+func (h *Handler) RevokeToken(c echo.Context) error {
+	claims := c.Get("user").(*TokenClaims)
 
 	var req RevokeRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := c.Bind(&req); err != nil {
+		// If no body, revoke all current tokens for the user
 		h.jwtService.RevokeUserTokens(claims.UserID)
-		respondWithJSON(w, http.StatusOK, map[string]string{
+		return c.JSON(http.StatusOK, echo.Map{
 			"message": "All tokens have been revoked",
 		})
-		return
 	}
 
 	if req.RevokeBeforeTime != nil {
 		h.jwtService.RevokeUserTokensBefore(claims.UserID, *req.RevokeBeforeTime)
-		respondWithJSON(w, http.StatusOK, map[string]string{
+		return c.JSON(http.StatusOK, echo.Map{
 			"message": "Tokens issued before " + req.RevokeBeforeTime.Format(time.RFC3339) + " have been revoked",
 		})
-		return
 	}
 
 	h.jwtService.RevokeUserTokens(claims.UserID)
-	respondWithJSON(w, http.StatusOK, map[string]string{
+	return c.JSON(http.StatusOK, echo.Map{
 		"message": "All tokens have been revoked",
 	})
 }
 
 // Protected is a sample protected endpoint
-func (h *Handler) Protected(w http.ResponseWriter, r *http.Request) {
-	claims, ok := r.Context().Value(UserContextKey).(*TokenClaims)
-	if !ok {
-		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
-		return
-	}
+func (h *Handler) Protected(c echo.Context) error {
+	claims := c.Get("user").(*TokenClaims)
 
-	respondWithJSON(w, http.StatusOK, map[string]interface{}{
+	return c.JSON(http.StatusOK, echo.Map{
 		"message":  "Welcome to the protected endpoint!",
 		"user_id":  claims.UserID,
 		"username": claims.Username,
@@ -189,13 +154,6 @@ func (h *Handler) Protected(w http.ResponseWriter, r *http.Request) {
 }
 
 // HealthCheck handler
-func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-}
-
-func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(payload)
+func (h *Handler) HealthCheck(c echo.Context) error {
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
 }

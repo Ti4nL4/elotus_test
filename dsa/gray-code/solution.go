@@ -1,13 +1,15 @@
 package problem1
 
-// Problem 1: [Tên bài toán]
-// Mô tả: [Mô tả bài toán]
-//
-// Input:
-// Output:
-// Constraints:
+func grayCode(n int) []int {
+	totalCodes := 1 << n
 
-func Solution() {
-	// TODO: Implement solution
+	grayCodes := make([]int, 0, totalCodes)
+
+	for i := 0; i < totalCodes; i++ {
+		grayCodeValue := i ^ (i >> 1)
+
+		grayCodes = append(grayCodes, grayCodeValue)
+	}
+
+	return grayCodes
 }
-

@@ -1,0 +1,57 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+server/app
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace file
+go.work
+
+# Dependency directories
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment files (contain sensitive data)
+server/.env.local.yaml
+server/.env.production.yaml
+server/.env.staging.yaml
+
+# Database config (contains passwords)
+server/db/database.yaml
+
+# Keep sample files
+!server/.env.sample.yaml
+!server/db/database.sample.yaml
+
+# Logs
+*.log
+logs/
+
+# Temp files
+tmp/
+temp/
+
+# Debug
+debug
+*.prof
+
+#note
+note.txt

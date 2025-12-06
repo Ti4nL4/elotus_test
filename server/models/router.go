@@ -2,11 +2,13 @@ package models
 
 import (
 	"fmt"
-	"log"
 	"net/http"
+	"strings"
 
 	"elotus_test/server/cmd"
 	"elotus_test/server/env"
+	"elotus_test/server/logger"
+	custommiddleware "elotus_test/server/middleware"
 	"elotus_test/server/models/auth"
 
 	"github.com/labstack/echo/v4"
@@ -18,9 +20,16 @@ func (m *Models) SetupRoutes() {
 	e := echo.New()
 	e.HideBanner = true
 
-	// Global middleware
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
+	// Global middleware - use custom zerolog middleware
+	e.Use(custommiddleware.RequestLoggerWithSkipper(func(c echo.Context) bool {
+		// Skip logging for static files
+		path := c.Request().URL.Path
+		return strings.HasPrefix(path, "/media/") ||
+			strings.HasSuffix(path, ".css") ||
+			strings.HasSuffix(path, ".js") ||
+			strings.HasSuffix(path, ".html")
+	}))
+	e.Use(custommiddleware.RecoverWithLogger())
 	e.Use(middleware.CORS())
 
 	// Public routes - define these BEFORE static files
@@ -53,21 +62,21 @@ func (m *Models) SetupRoutes() {
 
 	// Start server
 	serverAddr := ":" + env.E.GetServerPort()
-	log.Printf("Server starting on %s...", serverAddr)
-	log.Println("Available endpoints:")
-	log.Println("  GET  /              - Web UI for testing")
-	log.Println("  POST /register      - Register a new user")
-	log.Println("  POST /login         - Login and get JWT token")
-	log.Println("  POST /api/revoke    - Revoke tokens (requires auth)")
-	log.Println("  GET  /api/protected - Protected endpoint (requires auth)")
-	log.Println("  POST /api/upload    - Upload image file (requires auth, max 8MB)")
-	log.Println("  GET  /api/uploads   - Get all uploads for user (requires auth)")
-	log.Println("  GET  /api/uploads/:id - Get specific upload (requires auth)")
-	log.Println("  GET  /health        - Health check")
+	logger.Infof("Server starting on %s...", serverAddr)
+	logger.Info("Available endpoints:")
+	logger.Info("  GET  /              - Web UI for testing")
+	logger.Info("  POST /register      - Register a new user")
+	logger.Info("  POST /login         - Login and get JWT token")
+	logger.Info("  POST /api/revoke    - Revoke tokens (requires auth)")
+	logger.Info("  GET  /api/protected - Protected endpoint (requires auth)")
+	logger.Info("  POST /api/upload    - Upload image file (requires auth, max 8MB)")
+	logger.Info("  GET  /api/uploads   - Get all uploads for user (requires auth)")
+	logger.Info("  GET  /api/uploads/:id - Get specific upload (requires auth)")
+	logger.Info("  GET  /health        - Health check")
 
 	go func() {
 		if err := e.Start(serverAddr); err != nil {
-			log.Printf("Server stopped: %v", err)
+			logger.Errorf("Server stopped: %v", err)
 		}
 	}()
 }

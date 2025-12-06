@@ -1,11 +1,10 @@
 package models
 
 import (
-	"log"
-
 	"elotus_test/server/bsql"
 	"elotus_test/server/cmd"
 	"elotus_test/server/env"
+	"elotus_test/server/logger"
 	"elotus_test/server/models/auth"
 	"elotus_test/server/models/upload"
 	"elotus_test/server/models/user"
@@ -28,17 +27,17 @@ func NewModels(cmdMode bool) *Models {
 	m := &Models{}
 
 	// Database is required
-	log.Println("Connecting to PostgreSQL...")
+	logger.Info("Connecting to PostgreSQL...")
 
 	dbConfigPath := cmd.ResolvePath(env.E.DatabaseConfigFilePath)
 	dbConfig, err := bsql.LoadDatabaseConfig(dbConfigPath)
 	if err != nil {
-		log.Fatalf("Failed to load database config: %v", err)
+		logger.Fatalf("Failed to load database config: %v", err)
 	}
 
-	log.Printf("  Host: %s:%s", dbConfig.Host, dbConfig.Port)
-	log.Printf("  Database: %s", dbConfig.Database)
-	log.Printf("  User: %s", dbConfig.Username)
+	logger.Infof("  Host: %s:%s", dbConfig.Host, dbConfig.Port)
+	logger.Infof("  Database: %s", dbConfig.Database)
+	logger.Infof("  User: %s", dbConfig.Username)
 
 	m.db = bsql.Open(
 		dbConfig.Username,
@@ -51,19 +50,19 @@ func NewModels(cmdMode bool) *Models {
 	)
 
 	// Run migrations
-	log.Println("Running database migrations...")
+	logger.Info("Running database migrations...")
 	migPath := cmd.ResolvePath("db/migrations")
 	if err := psql.MigrateUp(m.db, migPath); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+		logger.Fatalf("Failed to run migrations: %v", err)
 	}
 
 	// Use PostgreSQL repository
 	m.userStore = user.NewPostgresRepository(m.db)
-	log.Println("Using PostgreSQL for user storage")
+	logger.Info("Using PostgreSQL for user storage")
 
 	// Initialize upload repository
 	m.uploadStore = upload.NewPostgresRepository(m.db)
-	log.Println("Using PostgreSQL for file upload storage")
+	logger.Info("Using PostgreSQL for file upload storage")
 
 	// Initialize token revocation store (DB-based)
 	m.revocationStore = auth.NewTokenRevocationStore(m.db)
@@ -92,6 +91,6 @@ func NewModels(cmdMode bool) *Models {
 func (m *Models) RunCmd(c string) {
 	switch c {
 	default:
-		log.Printf("Unknown command: %s", c)
+		logger.Warnf("Unknown command: %s", c)
 	}
 }

@@ -2,10 +2,10 @@ package main
 
 import (
 	"flag"
-	"log"
 
 	"elotus_test/server/cmd"
 	"elotus_test/server/env"
+	"elotus_test/server/logger"
 	"elotus_test/server/models"
 	"elotus_test/server/renv"
 )
@@ -17,7 +17,6 @@ var steps = flag.Int("steps", 1, "Number of migrations to rollback")
 
 func main() {
 	flag.Parse()
-	log.Println("Starting elotus_test...")
 
 	// Parse environment configuration
 	var envConfig *env.ENV
@@ -25,8 +24,16 @@ func main() {
 	envConfig.SetDefaults()
 	env.E = envConfig
 
-	log.Printf("Environment: %s", env.E.Environment)
-	log.Printf("Server Name: %s", env.E.ServerName)
+	// Initialize logger based on environment
+	if env.E.IsDevelopment() {
+		logger.InitDevelopment()
+	} else {
+		logger.InitProduction()
+	}
+
+	logger.Info("Starting elotus_test...")
+	logger.Infof("Environment: %s", env.E.Environment)
+	logger.Infof("Server Name: %s", env.E.ServerName)
 
 	// Handle database commands
 	if *db != "" {

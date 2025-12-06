@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"elotus_test/server/cmd"
 	"elotus_test/server/env"
 	"elotus_test/server/logger"
 	custommiddleware "elotus_test/server/middleware"
-	"elotus_test/server/models/auth"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -32,11 +32,13 @@ func (m *Models) SetupRoutes() {
 	e.Use(custommiddleware.RecoverWithLogger())
 	e.Use(middleware.CORS())
 
+	// Rate limit middleware for auth endpoints
+	authRateLimit := custommiddleware.RateLimitByIP(m.bredisClient, 10, time.Minute)
+
 	// Public routes - define these BEFORE static files
 	e.GET("/health", m.authHandler.HealthCheck)
-	e.POST("/register", m.authHandler.Register)
-	e.POST("/login", m.authHandler.Login)
-	e.GET("/upload-form", m.uploadHandler.UploadForm) // Simple HTML form for testing
+	e.POST("/register", m.authHandler.Register, authRateLimit)
+	e.POST("/login", m.authHandler.Login, authRateLimit)
 
 	// Config endpoint for HTML to get API settings
 	e.GET("/config.js", configHandler)
@@ -47,7 +49,9 @@ func (m *Models) SetupRoutes() {
 
 	// Protected routes (require authentication)
 	protected := e.Group("/api")
-	protected.Use(auth.JWTMiddleware(m.jwtService))
+	protected.Use(custommiddleware.JWTMiddleware(func(token string) (interface{}, error) {
+		return m.jwtService.ValidateToken(token)
+	}))
 	{
 		protected.POST("/revoke", m.authHandler.RevokeToken)
 		protected.GET("/protected", m.authHandler.Protected)

@@ -1,0 +1,9 @@
+# Redis Configuration
+# Copy this file to redis.yaml and modify as needed
+
+host: "localhost"
+port: "6379"
+password: ""          # Leave empty if no password
+db: 0                 # Redis database number (0-15)
+pool_size: 10         # Connection pool size
+

@@ -50,23 +50,3 @@ func LoadDatabaseConfig(path string) (*DatabaseConfig, error) {
 
 	return &config, nil
 }
-
-// OpenFromConfig opens database from config file
-func OpenFromConfig(configPath string) (*DB, error) {
-	config, err := LoadDatabaseConfig(configPath)
-	if err != nil {
-		return nil, err
-	}
-
-	db := Open(
-		config.Username,
-		config.Password,
-		config.Host,
-		config.Port,
-		config.Database,
-		config.MaxIdleConnection,
-		config.MaxOpenConnection,
-	)
-
-	return db, nil
-}

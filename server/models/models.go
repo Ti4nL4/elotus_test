@@ -1,6 +1,10 @@
 package models
 
 import (
+	"fmt"
+	"os"
+
+	"elotus_test/server/bredis"
 	"elotus_test/server/bsql"
 	"elotus_test/server/cmd"
 	"elotus_test/server/env"
@@ -9,17 +13,28 @@ import (
 	"elotus_test/server/models/upload"
 	"elotus_test/server/models/user"
 	"elotus_test/server/psql"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Models holds all application components
 type Models struct {
-	db              *bsql.DB
-	userStore       user.Repository
-	uploadStore     upload.Repository
-	revocationStore *auth.TokenRevocationStore
-	jwtService      *auth.JWTService
-	authHandler     *auth.Handler
-	uploadHandler   *upload.Handler
+	db           *bsql.DB
+	bredisClient *bredis.Client
+
+	userStore     user.Repository
+	uploadStore   upload.Repository
+	jwtService    *auth.JWTService
+	authHandler   *auth.Handler
+	uploadHandler *upload.Handler
+}
+
+// RedisConfig holds Redis configuration
+type RedisConfig struct {
+	Host     string `yaml:"host"`
+	Port     string `yaml:"port"`
+	Password string `yaml:"password"`
+	DB       int    `yaml:"db"`
 }
 
 // NewModels creates and initializes all application components
@@ -56,35 +71,70 @@ func NewModels(cmdMode bool) *Models {
 		logger.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	// Use PostgreSQL repository
+	// Connect to Redis (optional)
+	m.bredisClient = m.initRedis()
+
+	// Initialize repositories
 	m.userStore = user.NewPostgresRepository(m.db)
-	logger.Info("Using PostgreSQL for user storage")
-
-	// Initialize upload repository
 	m.uploadStore = upload.NewPostgresRepository(m.db)
-	logger.Info("Using PostgreSQL for file upload storage")
+	logger.Info("Using PostgreSQL for storage")
 
-	// Initialize token revocation store (DB-based)
-	m.revocationStore = auth.NewTokenRevocationStore(m.db)
-
-	// Initialize JWT service
+	// Initialize JWT service with revocation store
+	revocationStore := auth.NewTokenRevocationStore(m.db, m.bredisClient)
 	jwtConfig := &auth.Config{
 		SecretKey:     []byte(env.E.JWTSigningKey),
 		TokenDuration: env.E.GetJWTDuration(),
 	}
-	m.jwtService = auth.NewJWTService(jwtConfig, m.revocationStore)
+	m.jwtService = auth.NewJWTService(jwtConfig, revocationStore)
 
-	// Initialize auth handler
-	m.authHandler = auth.NewHandler(m.userStore, m.jwtService)
-
-	// Initialize upload handler
-	m.uploadHandler = upload.NewHandler(m.db, m.uploadStore)
+	// Initialize handlers
+	m.authHandler = auth.NewHandler(m.userStore, m.jwtService, m.bredisClient)
+	m.uploadHandler = upload.NewHandler(m.db, m.uploadStore, m.bredisClient)
 
 	if !cmdMode {
 		m.SetupRoutes()
 	}
 
 	return m
+}
+
+func (m *Models) initRedis() *bredis.Client {
+	redisConfigPath := cmd.ResolvePath(env.E.RedisConfigFilePath)
+	if redisConfigPath == "" {
+		redisConfigPath = cmd.ResolvePath("db/redis.yaml")
+	}
+
+	data, err := os.ReadFile(redisConfigPath)
+	if err != nil {
+		logger.Warnf("Redis config not found, disabled")
+		return nil
+	}
+
+	var cfg RedisConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		logger.Warnf("Invalid redis config: %v", err)
+		return nil
+	}
+
+	if cfg.Host == "" {
+		cfg.Host = "localhost"
+	}
+	if cfg.Port == "" {
+		cfg.Port = "6379"
+	}
+
+	logger.Info("Connecting to Redis...")
+	logger.Infof("  Host: %s:%s", cfg.Host, cfg.Port)
+
+	addr := fmt.Sprintf("%s:%s", cfg.Host, cfg.Port)
+	client := bredis.New(addr, cfg.Password, cfg.DB, env.E.ServerName)
+	if client == nil {
+		logger.Warnf("Failed to connect to Redis, disabled")
+		return nil
+	}
+
+	logger.Info("Redis connected")
+	return client
 }
 
 // RunCmd runs command mode

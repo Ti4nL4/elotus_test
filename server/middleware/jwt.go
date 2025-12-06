@@ -1,4 +1,4 @@
-package auth
+package middleware
 
 import (
 	"net/http"
@@ -7,8 +7,11 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// ValidateTokenFunc is the function signature for token validation
+type ValidateTokenFunc func(tokenString string) (claims interface{}, err error)
+
 // JWTMiddleware creates an Echo middleware that validates JWT tokens
-func JWTMiddleware(jwtService *JWTService) echo.MiddlewareFunc {
+func JWTMiddleware(validateFn ValidateTokenFunc) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			authHeader := c.Request().Header.Get("Authorization")
@@ -21,16 +24,12 @@ func JWTMiddleware(jwtService *JWTService) echo.MiddlewareFunc {
 				return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Invalid authorization header format"})
 			}
 
-			tokenString := parts[1]
-
-			claims, err := jwtService.ValidateToken(tokenString)
+			claims, err := validateFn(parts[1])
 			if err != nil {
 				return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Invalid or expired token: " + err.Error()})
 			}
 
-			// Store claims in context
 			c.Set("user", claims)
-
 			return next(c)
 		}
 	}

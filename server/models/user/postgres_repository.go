@@ -81,3 +81,12 @@ func (r *PostgresRepository) GetUserByID(id int64) (*User, bool) {
 
 	return &user, true
 }
+
+// UpdateLastLogin updates the last login time for a user
+func (r *PostgresRepository) UpdateLastLogin(userID int64) error {
+	_, err := r.db.Exec(
+		`UPDATE users SET last_login_at = $1 WHERE id = $2`,
+		time.Now(), userID,
+	)
+	return err
+}

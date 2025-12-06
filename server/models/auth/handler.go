@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"elotus_test/server/bredis"
 	"elotus_test/server/models/user"
 
 	"github.com/labstack/echo/v4"
@@ -14,13 +15,15 @@ import (
 type Handler struct {
 	userRepo   user.Repository
 	jwtService *JWTService
+	redis      *bredis.Client
 }
 
 // NewHandler creates a new Handler
-func NewHandler(userRepo user.Repository, jwtService *JWTService) *Handler {
+func NewHandler(userRepo user.Repository, jwtService *JWTService, redis *bredis.Client) *Handler {
 	return &Handler{
 		userRepo:   userRepo,
 		jwtService: jwtService,
+		redis:      redis,
 	}
 }
 
@@ -46,6 +49,12 @@ type LoginResponse struct {
 type RevokeRequest struct {
 	RevokeBeforeTime *time.Time `json:"revoke_before_time,omitempty"`
 }
+
+// Rate limit config
+const (
+	loginRateLimitMax    = 5
+	loginRateLimitWindow = 15 * time.Minute
+)
 
 // Register handles user registration
 func (h *Handler) Register(c echo.Context) error {
@@ -96,6 +105,17 @@ func (h *Handler) Login(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Username and password are required"})
 	}
 
+	// Check rate limit by username (IP rate limit is handled by middleware)
+	if h.redis != nil {
+		result := h.redis.CheckRateLimit("login:user:"+req.Username, loginRateLimitMax, loginRateLimitWindow)
+		if !result.Allowed {
+			return c.JSON(http.StatusTooManyRequests, echo.Map{
+				"error":       "Too many login attempts for this account.",
+				"retry_after": result.RetryAfter.Seconds(),
+			})
+		}
+	}
+
 	u, exists := h.userRepo.GetUserByUsername(req.Username)
 	if !exists {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Invalid username or password"})
@@ -109,6 +129,14 @@ func (h *Handler) Login(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to generate token"})
 	}
+
+	// Reset rate limit on success
+	if h.redis != nil {
+		h.redis.ResetRateLimit("login:user:" + req.Username)
+	}
+
+	// Update last login time
+	_ = h.userRepo.UpdateLastLogin(u.ID)
 
 	return c.JSON(http.StatusOK, LoginResponse{
 		Token:     token,

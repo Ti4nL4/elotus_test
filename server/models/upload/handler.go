@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"elotus_test/server/bredis"
 	"elotus_test/server/bsql"
 	"elotus_test/server/cmd"
 	"elotus_test/server/models/auth"
@@ -26,40 +27,29 @@ var timeNow = time.Now
 type Handler struct {
 	db         *bsql.DB
 	uploadRepo Repository
+	redis      *bredis.Client
 }
 
 // NewHandler creates a new Handler
-func NewHandler(db *bsql.DB, uploadRepo Repository) *Handler {
+func NewHandler(db *bsql.DB, uploadRepo Repository, redis *bredis.Client) *Handler {
 	return &Handler{
 		db:         db,
 		uploadRepo: uploadRepo,
+		redis:      redis,
 	}
+}
+
+func (h *Handler) cacheKey(userID int64) string {
+	return fmt.Sprintf("uploads:%d", userID)
 }
 
 // Upload handles image file upload - POST /upload
 func (h *Handler) Upload(c echo.Context) error {
-	return h.uploadImageCore(c, "", 0)
-}
-
-// UploadWithLimit handles image file upload with custom max size
-func (h *Handler) UploadWithLimit(c echo.Context, category string, maxFileSize int64) error {
-	return h.uploadImageCore(c, category, maxFileSize)
-}
-
-func (h *Handler) uploadImageCore(c echo.Context, category string, maxFileSize int64) error {
 	// Get user claims from context (set by JWT middleware)
 	claims := c.Get("user").(*auth.TokenClaims)
 
-	// Default max file size is 8MB
-	if maxFileSize == 0 {
-		maxFileSize = MaxFileSize
-	}
-
-	name := "image"
-	fileType := "image"
-
-	fileHeader, err := c.FormFile(name)
-	validateErr := validateUploadFile(fileHeader, fileType, err)
+	fileHeader, err := c.FormFile("image")
+	validateErr := validateUploadFile(fileHeader, "image", err)
 	if validateErr != nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{
 			"success": false,
@@ -67,13 +57,13 @@ func (h *Handler) uploadImageCore(c echo.Context, category string, maxFileSize i
 		})
 	}
 
-	// Check file size
-	if fileHeader.Size > maxFileSize {
+	// Check file size (max 8MB)
+	if fileHeader.Size > MaxFileSize {
 		return c.JSON(http.StatusBadRequest, echo.Map{
 			"success": false,
 			"error":   ErrFileTooLarge.Error(),
 			"data": echo.Map{
-				"maxSize":    maxFileSize,
+				"maxSize":    MaxFileSize,
 				"actualSize": fileHeader.Size,
 			},
 		})
@@ -90,9 +80,7 @@ func (h *Handler) uploadImageCore(c echo.Context, category string, maxFileSize i
 
 	// Get file extension from original filename
 	tokens := strings.Split(fileHeader.Filename, ".")
-	tail := tokens[len(tokens)-1]
-
-	fileTypeFolder := fmt.Sprintf("%ss", fileType) // "images"
+	ext := tokens[len(tokens)-1]
 
 	// Collect HTTP metadata
 	req := c.Request()
@@ -102,7 +90,7 @@ func (h *Handler) uploadImageCore(c echo.Context, category string, maxFileSize i
 	requestURI := req.RequestURI
 
 	// Save file and get paths (use project's tmp folder)
-	relativePath, absolutePath, err := h.saveMediaFile(claims.UserID, file, "tmp", fileTypeFolder, tail)
+	relativePath, absolutePath, err := h.saveMediaFile(claims.UserID, file, "tmp", "images", ext)
 	if err != nil {
 		log.Printf("[Upload] saveMediaFile error: %v", err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{
@@ -134,6 +122,11 @@ func (h *Handler) uploadImageCore(c echo.Context, category string, maxFileSize i
 			"success": false,
 			"error":   "Failed to save file metadata",
 		})
+	}
+
+	// Invalidate uploads cache for this user
+	if h.redis != nil {
+		_ = h.redis.Delete(h.cacheKey(claims.UserID))
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{
@@ -268,9 +261,23 @@ func randSeq(n int) string {
 
 // GetUserUploads returns all uploads for the authenticated user
 func (h *Handler) GetUserUploads(c echo.Context) error {
-	// Get user claims from context (set by JWT middleware)
 	claims := c.Get("user").(*auth.TokenClaims)
+	cacheKey := h.cacheKey(claims.UserID)
 
+	// Try cache first
+	if h.redis != nil {
+		var cached []echo.Map
+		if h.redis.Get(cacheKey, &cached) == nil {
+			return c.JSON(http.StatusOK, echo.Map{
+				"success": true,
+				"data":    cached,
+				"total":   len(cached),
+				"cached":  true,
+			})
+		}
+	}
+
+	// Cache miss - query DB
 	uploads, err := h.uploadRepo.GetFileUploadsByUserID(claims.UserID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{
@@ -291,6 +298,11 @@ func (h *Handler) GetUserUploads(c echo.Context) error {
 			"file_path":         upload.TempPath,
 			"created_at":        upload.CreatedAt,
 		})
+	}
+
+	// Cache for 30 seconds
+	if h.redis != nil {
+		_ = h.redis.Set(cacheKey, uploadList, 30*time.Minute)
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{
@@ -338,58 +350,4 @@ func (h *Handler) GetUploadByID(c echo.Context) error {
 			"created_at":        upload.CreatedAt,
 		},
 	})
-}
-
-// UploadForm serves a simple HTML form for file upload testing
-func (h *Handler) UploadForm(c echo.Context) error {
-	html := `<!DOCTYPE html>
-<html>
-<head>
-    <title>File Upload</title>
-</head>
-<body>
-    <h1>Upload Image</h1>
-    <form action="/upload" method="POST" enctype="multipart/form-data">
-        <p>
-            <label>Authorization Token:</label><br>
-            <input type="text" id="token" name="token" placeholder="Enter your JWT token" style="width: 400px;">
-        </p>
-        <p>
-            <label>Select Image:</label><br>
-            <input type="file" name="image" accept="image/*">
-        </p>
-        <p>
-            <button type="submit">Upload</button>
-        </p>
-    </form>
-    <p><small>Note: Max file size is 8MB. Only image files are accepted.</small></p>
-    
-    <script>
-    document.querySelector('form').addEventListener('submit', function(e) {
-        e.preventDefault();
-        
-        var token = document.getElementById('token').value;
-        var formData = new FormData();
-        var fileInput = document.querySelector('input[type="file"]');
-        formData.append('image', fileInput.files[0]);
-        
-        fetch('/upload', {
-            method: 'POST',
-            headers: {
-                'Authorization': 'Bearer ' + token
-            },
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            alert(JSON.stringify(data, null, 2));
-        })
-        .catch(error => {
-            alert('Error: ' + error);
-        });
-    });
-    </script>
-</body>
-</html>`
-	return c.HTML(http.StatusOK, html)
 }

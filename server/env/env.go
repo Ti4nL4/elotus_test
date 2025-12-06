@@ -11,6 +11,7 @@ var E *ENV
 type ENV struct {
 	Environment            string `yaml:"environment"`
 	DatabaseConfigFilePath string `yaml:"database_config_file_path"`
+	RedisConfigFilePath    string `yaml:"redis_config_file_path"`
 
 	ServerName string `yaml:"server_name"`
 
@@ -88,11 +89,6 @@ func (env *ENV) GetAPIBaseURL() string {
 // IsDevelopment returns true if environment is development
 func (env *ENV) IsDevelopment() bool {
 	return env != nil && env.Environment == "development"
-}
-
-// IsProduction returns true if environment is production
-func (env *ENV) IsProduction() bool {
-	return env != nil && env.Environment == "production"
 }
 
 // SetDefaults sets default values for ENV

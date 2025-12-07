@@ -1,0 +1,7 @@
+# Docker environment Redis configuration
+host: "redis"
+port: "6379"
+password: "redis_secret_password"
+db: 0
+pool_size: 10
+

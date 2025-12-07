@@ -1,0 +1,51 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+.cursor
+
+# Build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+server/app
+
+# Test files
+*_test.go
+server/tests/
+**/*_test.go
+
+# Temporary files
+tmp/
+server/tmp/
+server/models/upload/tmp/
+*.tmp
+*.log
+
+# Local config (not for Docker)
+server/db/database.yaml
+server/db/redis.yaml
+
+# Documentation
+*.md
+!README.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker files (no need to copy into image)
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Notes
+note.txt
+

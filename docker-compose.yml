@@ -1,0 +1,90 @@
+services:
+  # ============================================
+  # Go Application
+  # ============================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: elotus-app
+    ports:
+      - "8080:8080"
+    environment:
+      - ENVIRONMENT=production
+      - SERVER_NAME=elotus-auth
+      - JWT_SIGNING_KEY=your-super-secret-jwt-key-change-in-production
+      - JWT_DURATION=24h
+      - DATABASE_CONFIG_FILE_PATH=server/db/database.docker.yaml
+      - REDIS_CONFIG_FILE_PATH=server/db/redis.docker.yaml
+    volumes:
+      - upload_data:/app/tmp
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - elotus-network
+    restart: unless-stopped
+
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: elotus-postgres
+    environment:
+      POSTGRES_DB: elotus_test
+      POSTGRES_USER: elotus
+      POSTGRES_PASSWORD: elotus_secret_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"  # Use 5433 to avoid conflict with local PostgreSQL
+    networks:
+      - elotus-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U elotus -d elotus_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ============================================
+  # Redis Cache
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: elotus-redis
+    command: redis-server --appendonly yes --requirepass redis_secret_password
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - elotus-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_secret_password", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  elotus-network:
+    driver: bridge
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  upload_data:
+    driver: local
+

@@ -1,0 +1,10 @@
+# Docker environment database configuration
+type: "postgres"
+host: "postgres"
+port: "5432"
+username: "elotus"
+password: "elotus_secret_password"
+database: "elotus_test"
+maxIdleConnection: 40
+maxOpenConnection: 80
+

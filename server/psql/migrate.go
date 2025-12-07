@@ -11,7 +11,6 @@ import (
 	"elotus_test/server/bsql"
 )
 
-// Migration represents a database migration
 type Migration struct {
 	Version   string
 	Name      string
@@ -20,29 +19,24 @@ type Migration struct {
 	AppliedAt *time.Time
 }
 
-// MigrateUp runs all pending migrations
 func MigrateUp(db *bsql.DB, migrationsPath string) error {
-	// Create migrations table if not exists
 	if err := createMigrationsTable(db); err != nil {
 		return fmt.Errorf("failed to create migrations table: %w", err)
 	}
 
-	// Get applied migrations
 	applied, err := getAppliedMigrations(db)
 	if err != nil {
 		return fmt.Errorf("failed to get applied migrations: %w", err)
 	}
 
-	// Get all migration files
 	migrations, err := loadMigrations(migrationsPath)
 	if err != nil {
 		return fmt.Errorf("failed to load migrations: %w", err)
 	}
 
-	// Apply pending migrations
 	for _, m := range migrations {
 		if _, ok := applied[m.Version]; ok {
-			continue // Already applied
+			continue
 		}
 
 		fmt.Printf("Applying migration %s: %s\n", m.Version, m.Name)
@@ -61,9 +55,7 @@ func MigrateUp(db *bsql.DB, migrationsPath string) error {
 	return nil
 }
 
-// MigrateDown rolls back the last N migrations
 func MigrateDown(db *bsql.DB, migrationsPath string, steps int) error {
-	// Get applied migrations in reverse order
 	applied, err := getAppliedMigrationsOrdered(db)
 	if err != nil {
 		return fmt.Errorf("failed to get applied migrations: %w", err)
@@ -74,19 +66,16 @@ func MigrateDown(db *bsql.DB, migrationsPath string, steps int) error {
 		return nil
 	}
 
-	// Load all migrations
 	migrations, err := loadMigrations(migrationsPath)
 	if err != nil {
 		return fmt.Errorf("failed to load migrations: %w", err)
 	}
 
-	// Create a map for quick lookup
 	migrationMap := make(map[string]*Migration)
 	for _, m := range migrations {
 		migrationMap[m.Version] = m
 	}
 
-	// Rollback the last N migrations
 	count := 0
 	for i := len(applied) - 1; i >= 0 && count < steps; i-- {
 		version := applied[i]
@@ -118,28 +107,22 @@ func MigrateDown(db *bsql.DB, migrationsPath string, steps int) error {
 	return nil
 }
 
-// GenerateMigration creates a new migration file
 func GenerateMigration(migrationsPath, name string) error {
-	// Create migrations directory if not exists
 	if err := os.MkdirAll(migrationsPath, 0755); err != nil {
 		return fmt.Errorf("failed to create migrations directory: %w", err)
 	}
 
-	// Generate version (timestamp)
 	version := time.Now().Format("20060102150405")
 	fileName := fmt.Sprintf("%s_%s.sql", version, strings.ToLower(strings.ReplaceAll(name, " ", "_")))
 	filePath := filepath.Join(migrationsPath, fileName)
 
-	// Create migration file template
 	content := fmt.Sprintf(`-- Migration: %s
 -- Created at: %s
 
 -- +migrate Up
--- Write your UP migration SQL here
 
 
 -- +migrate Down
--- Write your DOWN migration SQL here (for rollback)
 
 `, name, time.Now().Format(time.RFC3339))
 
@@ -151,7 +134,6 @@ func GenerateMigration(migrationsPath, name string) error {
 	return nil
 }
 
-// MigrationStatus shows the status of all migrations
 func MigrationStatus(db *bsql.DB, migrationsPath string) error {
 	if err := createMigrationsTable(db); err != nil {
 		return err
@@ -179,8 +161,6 @@ func MigrationStatus(db *bsql.DB, migrationsPath string) error {
 
 	return nil
 }
-
-// Helper functions
 
 func createMigrationsTable(db *bsql.DB) error {
 	_, err := db.Exec(`
@@ -264,7 +244,6 @@ func loadMigrations(path string) ([]*Migration, error) {
 		migrations = append(migrations, m)
 	}
 
-	// Sort by version
 	sort.Slice(migrations, func(i, j int) bool {
 		return migrations[i].Version < migrations[j].Version
 	})
@@ -288,7 +267,6 @@ func parseMigrationFile(filePath string) (*Migration, error) {
 	name := strings.TrimSuffix(parts[1], ".sql")
 	name = strings.ReplaceAll(name, "_", " ")
 
-	// Parse UP and DOWN sections
 	contentStr := string(content)
 	upSQL := ""
 	downSQL := ""
@@ -317,4 +295,3 @@ func parseMigrationFile(filePath string) (*Migration, error) {
 		DownSQL: downSQL,
 	}, nil
 }
-

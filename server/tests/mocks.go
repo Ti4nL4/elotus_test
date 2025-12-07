@@ -8,21 +8,14 @@ import (
 	"elotus_test/server/models/user"
 )
 
-// ============================================================
-// User Mock Repository
-// ============================================================
-
-// MockUserRepository is an in-memory implementation of user.Repository for testing
 type MockUserRepository struct {
-	mu     sync.RWMutex
-	users  map[int64]*user.User
-	byName map[string]*user.User
-	nextID int64
-	// Hooks for testing specific scenarios
+	mu              sync.RWMutex
+	users           map[int64]*user.User
+	byName          map[string]*user.User
+	nextID          int64
 	CreateUserError error
 }
 
-// NewMockUserRepository creates a new MockUserRepository
 func NewMockUserRepository() *MockUserRepository {
 	return &MockUserRepository{
 		users:  make(map[int64]*user.User),
@@ -31,7 +24,6 @@ func NewMockUserRepository() *MockUserRepository {
 	}
 }
 
-// CreateUser creates a new user in memory
 func (r *MockUserRepository) CreateUser(username, hashedPassword string) (*user.User, error) {
 	if r.CreateUserError != nil {
 		return nil, r.CreateUserError
@@ -58,7 +50,6 @@ func (r *MockUserRepository) CreateUser(username, hashedPassword string) (*user.
 	return u, nil
 }
 
-// GetUserByUsername retrieves a user by username
 func (r *MockUserRepository) GetUserByUsername(username string) (*user.User, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -67,7 +58,6 @@ func (r *MockUserRepository) GetUserByUsername(username string) (*user.User, boo
 	return u, exists
 }
 
-// GetUserByID retrieves a user by ID
 func (r *MockUserRepository) GetUserByID(id int64) (*user.User, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -76,7 +66,6 @@ func (r *MockUserRepository) GetUserByID(id int64) (*user.User, bool) {
 	return u, exists
 }
 
-// UpdateLastLogin updates the last login time for a user
 func (r *MockUserRepository) UpdateLastLogin(userID int64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -88,7 +77,6 @@ func (r *MockUserRepository) UpdateLastLogin(userID int64) error {
 	return nil
 }
 
-// Reset clears all data (useful between tests)
 func (r *MockUserRepository) Reset() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -99,7 +87,6 @@ func (r *MockUserRepository) Reset() {
 	r.CreateUserError = nil
 }
 
-// AddUser adds a user directly (for test setup)
 func (r *MockUserRepository) AddUser(u *user.User) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -111,21 +98,14 @@ func (r *MockUserRepository) AddUser(u *user.User) {
 	}
 }
 
-// ============================================================
-// Upload Mock Repository
-// ============================================================
-
-// MockUploadRepository is an in-memory implementation of upload.Repository for testing
 type MockUploadRepository struct {
-	mu      sync.RWMutex
-	uploads map[int64]*upload.FileUpload
-	nextID  int64
-	// Hooks for testing specific scenarios
+	mu          sync.RWMutex
+	uploads     map[int64]*upload.FileUpload
+	nextID      int64
 	CreateError error
 	GetError    error
 }
 
-// NewMockUploadRepository creates a new MockUploadRepository
 func NewMockUploadRepository() *MockUploadRepository {
 	return &MockUploadRepository{
 		uploads: make(map[int64]*upload.FileUpload),
@@ -133,7 +113,6 @@ func NewMockUploadRepository() *MockUploadRepository {
 	}
 }
 
-// CreateFileUpload creates a new file upload record in memory
 func (r *MockUploadRepository) CreateFileUpload(u *upload.FileUpload) (*upload.FileUpload, error) {
 	if r.CreateError != nil {
 		return nil, r.CreateError
@@ -146,14 +125,12 @@ func (r *MockUploadRepository) CreateFileUpload(u *upload.FileUpload) (*upload.F
 	u.CreatedAt = time.Now()
 	r.nextID++
 
-	// Store a copy
 	stored := *u
 	r.uploads[u.ID] = &stored
 
 	return u, nil
 }
 
-// GetFileUploadByID retrieves a file upload by ID
 func (r *MockUploadRepository) GetFileUploadByID(id int64) (*upload.FileUpload, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -163,12 +140,10 @@ func (r *MockUploadRepository) GetFileUploadByID(id int64) (*upload.FileUpload, 
 		return nil, false
 	}
 
-	// Return a copy
 	result := *u
 	return &result, true
 }
 
-// GetFileUploadsByUserID retrieves all file uploads for a user
 func (r *MockUploadRepository) GetFileUploadsByUserID(userID int64) ([]*upload.FileUpload, error) {
 	if r.GetError != nil {
 		return nil, r.GetError
@@ -180,7 +155,6 @@ func (r *MockUploadRepository) GetFileUploadsByUserID(userID int64) ([]*upload.F
 	var result []*upload.FileUpload
 	for _, u := range r.uploads {
 		if u.UserID == userID {
-			// Return a copy
 			copied := *u
 			result = append(result, &copied)
 		}
@@ -189,7 +163,6 @@ func (r *MockUploadRepository) GetFileUploadsByUserID(userID int64) ([]*upload.F
 	return result, nil
 }
 
-// Reset clears all data (useful between tests)
 func (r *MockUploadRepository) Reset() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -200,7 +173,6 @@ func (r *MockUploadRepository) Reset() {
 	r.GetError = nil
 }
 
-// AddUpload adds an upload directly (for test setup)
 func (r *MockUploadRepository) AddUpload(u *upload.FileUpload) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

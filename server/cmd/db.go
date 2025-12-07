@@ -10,18 +10,14 @@ import (
 	"elotus_test/server/psql"
 )
 
-// HandleDB handles database-related commands
 func HandleDB(command string, migrationName string, steps int) {
-	// Resolve database config path
 	dbConfigPath := ResolvePath(env.E.DatabaseConfigFilePath)
 
-	// Load database config
 	dbConfig, err := bsql.LoadDatabaseConfig(dbConfigPath)
 	if err != nil {
 		log.Fatalf("Failed to load database config: %v", err)
 	}
 
-	// Connect to database
 	database := bsql.Open(
 		dbConfig.Username,
 		dbConfig.Password,
@@ -33,7 +29,6 @@ func HandleDB(command string, migrationName string, steps int) {
 	)
 	defer database.Close()
 
-	// Resolve migrations path
 	migPath := ResolvePath("db/migrations")
 
 	switch command {

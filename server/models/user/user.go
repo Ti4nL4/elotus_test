@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// User represents a registered user
 type User struct {
 	ID                 int64      `json:"id"`
 	Username           string     `json:"username"`
@@ -15,7 +14,6 @@ type User struct {
 	LastRevokedTokenAt *time.Time `json:"last_revoked_token_at,omitempty"`
 }
 
-// Repository defines the interface for user data access
 type Repository interface {
 	CreateUser(username, hashedPassword string) (*User, error)
 	GetUserByUsername(username string) (*User, bool)
@@ -23,7 +21,6 @@ type Repository interface {
 	UpdateLastLogin(userID int64) error
 }
 
-// Errors
 var (
 	ErrUserExists   = errors.New("username already exists")
 	ErrUserNotFound = errors.New("user not found")

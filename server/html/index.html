@@ -59,14 +59,15 @@
                     body: JSON.stringify({ username, password })
                 });
 
-                const data = await response.json();
+                const result = await response.json();
 
-                if (data.token) {
-                    localStorage.setItem('jwt_token', data.token);
+                if (result.success && result.data && result.data.token) {
+                    localStorage.setItem('jwt_token', result.data.token);
                     localStorage.setItem('username', username);
                     window.location.href = '/dashboard.html';
                 } else {
-                    errorDiv.textContent = data.error || 'Login failed';
+                    const errMsg = result.error ? result.error.message : 'Login failed';
+                    errorDiv.textContent = errMsg;
                     errorDiv.style.display = 'block';
                 }
             } catch (error) {

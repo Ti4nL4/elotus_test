@@ -9,17 +9,14 @@ import (
 	"github.com/lib/pq"
 )
 
-// PostgresRepository handles user database operations
 type PostgresRepository struct {
 	db *bsql.DB
 }
 
-// NewPostgresRepository creates a new PostgresRepository
 func NewPostgresRepository(db *bsql.DB) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 
-// CreateUser inserts a new user into the database
 func (r *PostgresRepository) CreateUser(username, hashedPassword string) (*User, error) {
 	now := time.Now()
 
@@ -30,6 +27,7 @@ func (r *PostgresRepository) CreateUser(username, hashedPassword string) (*User,
 	})
 
 	if err != nil {
+		// pq error code 23505 = unique_violation
 		if pqErr, ok := err.(*pq.Error); ok {
 			if pqErr.Code == "23505" {
 				return nil, ErrUserExists
@@ -46,7 +44,6 @@ func (r *PostgresRepository) CreateUser(username, hashedPassword string) (*User,
 	}, nil
 }
 
-// GetUserByUsername retrieves a user by username
 func (r *PostgresRepository) GetUserByUsername(username string) (*User, bool) {
 	var user User
 	err := r.db.QueryRow(
@@ -64,7 +61,6 @@ func (r *PostgresRepository) GetUserByUsername(username string) (*User, bool) {
 	return &user, true
 }
 
-// GetUserByID retrieves a user by ID
 func (r *PostgresRepository) GetUserByID(id int64) (*User, bool) {
 	var user User
 	err := r.db.QueryRow(
@@ -82,7 +78,6 @@ func (r *PostgresRepository) GetUserByID(id int64) (*User, bool) {
 	return &user, true
 }
 
-// UpdateLastLogin updates the last login time for a user
 func (r *PostgresRepository) UpdateLastLogin(userID int64) error {
 	_, err := r.db.Exec(
 		`UPDATE users SET last_login_at = $1 WHERE id = $2`,

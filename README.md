@@ -2,7 +2,9 @@
 
 A Go backend server with JWT authentication and file upload features.
 
-> See [CHALLENGE.md](CHALLENGE.md) for test requirements.
+> 📋 See [CHALLENGE.md](CHALLENGE.md) for test requirements.
+> 
+> 👨‍💻 See [DEVELOPER.md](DEVELOPER.md) for developer documentation.
 
 ---
 
@@ -23,7 +25,7 @@ A Go backend server with JWT authentication and file upload features.
 | Register             | `POST /register`   | `server/models/auth/handler.go`   | ✅     |
 | Login                | `POST /login`      | `server/models/auth/handler.go`   | ✅     |
 | Revoke token by time | `POST /api/revoke` | `server/models/auth/handler.go`   | ✅     |
-| Upload image         | `POST /api/upload` | `server/models/upload/handler.go` | ✅     |
+| Upload image         | `POST /upload`     | `server/models/upload/handler.go` | ✅     |
 
 ---
 
@@ -71,12 +73,56 @@ go run main.go
 | ------ | -------------------- | --------------------------- | ------------- |
 | POST   | `/register`        | Register new user           | No            |
 | POST   | `/login`           | Login and get JWT token     | No            |
+| POST   | `/upload`          | Upload image (field: "data")| Yes           |
 | POST   | `/api/revoke`      | Revoke tokens by time       | Yes           |
 | GET    | `/api/protected`   | Test protected endpoint     | Yes           |
-| POST   | `/api/upload`      | Upload image file (max 8MB) | Yes           |
+| POST   | `/api/upload`      | Upload image (alternative)  | Yes           |
 | GET    | `/api/uploads`     | List user's uploads         | Yes           |
 | GET    | `/api/uploads/:id` | Get specific upload         | Yes           |
 | GET    | `/health`          | Health check                | No            |
+
+---
+
+## API Response Format
+
+All API responses follow a unified format:
+
+### Success Response
+```json
+{
+  "success": true,
+  "data": { ... },
+  "meta": {
+    "total": 10,
+    "cached": false
+  }
+}
+```
+
+### Error Response
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Password must be at least 8 characters"
+  }
+}
+```
+
+### Error Codes
+| Code | Description |
+| ---- | ----------- |
+| `BAD_REQUEST` | Invalid request |
+| `VALIDATION_ERROR` | Input validation failed |
+| `UNAUTHORIZED` | Authentication required |
+| `FORBIDDEN` | Access denied |
+| `NOT_FOUND` | Resource not found |
+| `CONFLICT` | Resource already exists |
+| `TOO_MANY_REQUESTS` | Rate limit exceeded |
+| `INTERNAL_ERROR` | Server error |
+
+---
 
 ## API Usage Examples
 
@@ -85,23 +131,34 @@ go run main.go
 ```bash
 curl -X POST http://localhost:8080/register \
   -H "Content-Type: application/json" \
-  -d '{"username":"testuser","password":"123456"}'
+  -d '{"username":"testuser","password":"Password123"}'
 ```
+
+**Password Requirements:**
+- Minimum 8 characters
+- At least one uppercase letter
+- At least one lowercase letter
+- At least one digit
+
+**Username Requirements:**
+- 3-50 characters
+- Only letters, numbers, and underscores
 
 ### Login
 
 ```bash
 curl -X POST http://localhost:8080/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"testuser","password":"123456"}'
+  -d '{"username":"testuser","password":"Password123"}'
 ```
 
 ### Upload Image
 
 ```bash
-curl -X POST http://localhost:8080/api/upload \
+# Using field name "data" as per challenge requirements
+curl -X POST http://localhost:8080/upload \
   -H "Authorization: Bearer YOUR_TOKEN" \
-  -F "image=@/path/to/image.jpg"
+  -F "data=@/path/to/image.jpg"
 ```
 
 ### Revoke Tokens
@@ -111,12 +168,44 @@ curl -X POST http://localhost:8080/api/revoke \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
+### Health Check
+
+```bash
+curl http://localhost:8080/health
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "status": "UP",
+    "db": "OK",
+    "redis": "OK",
+    "timestamp": "2025-12-07T21:45:00+07:00"
+  }
+}
+```
+
+**Status Values:**
+| Status | Description |
+| ------ | ----------- |
+| `UP` | All services healthy |
+| `DEGRADED` | Some services have issues |
+| `OK` | Component is working |
+| `DOWN` | Component is not responding |
+| `DISABLED` | Redis not configured (system still works) |
+
 ---
 
 ## Running Tests
 
 ```bash
+# Run all tests
 go test ./server/tests/... -v
+
+# Run with summary script
+./server/tests/run_tests.sh
 ```
 
 ---
@@ -130,7 +219,7 @@ elotus_test/
 │   ├── maximum-length-of-repeated-subarray/
 │   └── sum-of-distances-in-tree/
 ├── server/
-│   ├── main.go                   # Entry point
+│   ├── main.go                   # Entry point with graceful shutdown
 │   ├── models/
 │   │   ├── auth/                 # Authentication (JWT, handlers)
 │   │   ├── upload/               # File upload feature
@@ -138,12 +227,16 @@ elotus_test/
 │   │   ├── models.go             # App initialization
 │   │   └── router.go             # Routes setup
 │   ├── middleware/               # JWT, Rate limit, Logging
+│   ├── response/                 # Unified API response format
+│   ├── validation/               # Input validation utilities
 │   ├── db/
 │   │   ├── migrations/           # SQL migrations
 │   │   ├── database.yaml         # DB config
 │   │   └── redis.yaml            # Redis config
 │   ├── bredis/                   # Redis wrapper
 │   ├── bsql/                     # SQL wrapper
+│   ├── logger/                   # Zerolog wrapper
+│   ├── tests/                    # Unit tests
 │   └── html/                     # Web UI for testing
 ├── docker-compose.yml            # Docker deployment
 ├── Dockerfile                    # Multi-stage build
@@ -162,10 +255,26 @@ elotus_test/
 - **Cache**: Redis 7 (optional)
 - **JWT**: github.com/golang-jwt/jwt/v5 with HS256
 - **Password Hashing**: bcrypt
+- **Logging**: zerolog
 
 ---
 
 ## Design Decisions
+
+### Input Validation
+
+Strong validation for user inputs:
+- **Username**: 3-50 chars, alphanumeric + underscore only
+- **Password**: 8+ chars, requires uppercase, lowercase, and digit
+- Uses dedicated `server/validation/` package
+
+### Unified API Response
+
+All endpoints return consistent JSON format with:
+- `success`: Boolean indicating success/failure
+- `data`: Response payload (on success)
+- `error`: Error details with code and message (on failure)
+- `meta`: Metadata like pagination info
 
 ### JWT Token Revocation
 
@@ -175,13 +284,37 @@ elotus_test/
 
 ### File Upload
 
+- **Field name**: `data` (as per challenge requirements)
 - Validates content type by reading file header (not just extension)
 - Maximum file size: 8MB
 - Stores metadata in PostgreSQL including all HTTP information
 - Files saved to `tmp/images/` directory
+- Fallback extension detection from content-type
 
 ### Rate Limiting
 
 - IP-based rate limiting via Redis
-- User-based login attempt limiting
+- User-based login attempt limiting (5 attempts per 15 minutes)
 - Graceful degradation when Redis is unavailable
+- Rate limit headers in responses (`X-RateLimit-Limit`, `X-RateLimit-Remaining`)
+
+### Graceful Shutdown
+
+- Handles `SIGINT` and `SIGTERM` signals
+- 30-second timeout for graceful shutdown
+- Properly closes HTTP server, Redis, and database connections
+
+---
+
+## Docker Commands (Makefile)
+
+```bash
+make help       # Show all commands
+make build      # Build Docker images
+make up         # Start all services
+make down       # Stop all services
+make logs       # View logs
+make psql       # Connect to PostgreSQL
+make redis-cli  # Connect to Redis CLI
+make test       # Run tests
+```

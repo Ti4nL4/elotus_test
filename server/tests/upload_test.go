@@ -14,14 +14,13 @@ import (
 
 	"elotus_test/server/models/auth"
 	"elotus_test/server/models/upload"
+	"elotus_test/server/response"
 
 	"github.com/labstack/echo/v4"
 )
 
-// Ensure MockUploadRepository implements upload.Repository
 var _ upload.Repository = (*MockUploadRepository)(nil)
 
-// Helper function to create a multipart form with a file
 func createMultipartForm(fieldName, fileName string, content []byte) (*bytes.Buffer, string) {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -33,7 +32,6 @@ func createMultipartForm(fieldName, fileName string, content []byte) (*bytes.Buf
 	return body, writer.FormDataContentType()
 }
 
-// createTestImageContent creates valid PNG image bytes for testing
 func createTestImageContent() []byte {
 	// Minimal valid PNG header (8 bytes) + IHDR chunk + IEND chunk
 	// This creates a 1x1 pixel image
@@ -71,10 +69,37 @@ func createUploadTestContext(e *echo.Echo, method, path string, body io.Reader, 
 	return e.NewContext(req, rec), rec
 }
 
+func parseUploadResponse(body []byte) (*response.Response, error) {
+	var resp response.Response
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func getUploadDataMap(resp *response.Response) map[string]interface{} {
+	if resp.Data == nil {
+		return nil
+	}
+	if m, ok := resp.Data.(map[string]interface{}); ok {
+		return m
+	}
+	return nil
+}
+
+func getUploadDataList(resp *response.Response) []interface{} {
+	if resp.Data == nil {
+		return nil
+	}
+	if arr, ok := resp.Data.([]interface{}); ok {
+		return arr
+	}
+	return nil
+}
+
 func TestGetUserUploads_Success(t *testing.T) {
 	handler, mockRepo := setupUploadTestHandler()
 
-	// Add some test uploads
 	mockRepo.AddUpload(&upload.FileUpload{
 		ID:               1,
 		UserID:           1,
@@ -95,7 +120,6 @@ func TestGetUserUploads_Success(t *testing.T) {
 		TempPath:         "/tmp/test2.png",
 		CreatedAt:        time.Now(),
 	})
-	// Add upload for different user
 	mockRepo.AddUpload(&upload.FileUpload{
 		ID:               3,
 		UserID:           2,
@@ -120,17 +144,19 @@ func TestGetUserUploads_Success(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 
-	var response map[string]interface{}
-	json.Unmarshal(rec.Body.Bytes(), &response)
+	resp, _ := parseUploadResponse(rec.Body.Bytes())
 
-	if response["success"] != true {
+	if !resp.Success {
 		t.Error("Expected success: true")
 	}
 
-	// Should only get 2 uploads (for user 1)
-	total, ok := response["total"].(float64)
-	if !ok || int(total) != 2 {
-		t.Errorf("Expected total 2, got %v", response["total"])
+	if resp.Meta == nil || resp.Meta.Total != 2 {
+		t.Errorf("Expected meta.total=2, got %v", resp.Meta)
+	}
+
+	dataList := getUploadDataList(resp)
+	if len(dataList) != 2 {
+		t.Errorf("Expected 2 uploads, got %d", len(dataList))
 	}
 }
 
@@ -150,23 +176,20 @@ func TestGetUserUploads_Empty(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 
-	var response map[string]interface{}
-	json.Unmarshal(rec.Body.Bytes(), &response)
+	resp, _ := parseUploadResponse(rec.Body.Bytes())
 
-	if response["success"] != true {
+	if !resp.Success {
 		t.Error("Expected success: true")
 	}
 
-	total, ok := response["total"].(float64)
-	if !ok || int(total) != 0 {
-		t.Errorf("Expected total 0, got %v", response["total"])
+	if resp.Meta == nil || resp.Meta.Total != 0 {
+		t.Errorf("Expected meta.total=0, got %v", resp.Meta)
 	}
 }
 
 func TestGetUploadByID_Success(t *testing.T) {
 	handler, mockRepo := setupUploadTestHandler()
 
-	// Add a test upload
 	mockRepo.AddUpload(&upload.FileUpload{
 		ID:               1,
 		UserID:           1,
@@ -193,15 +216,14 @@ func TestGetUploadByID_Success(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 
-	var response map[string]interface{}
-	json.Unmarshal(rec.Body.Bytes(), &response)
+	resp, _ := parseUploadResponse(rec.Body.Bytes())
 
-	if response["success"] != true {
+	if !resp.Success {
 		t.Error("Expected success: true")
 	}
 
-	data, ok := response["data"].(map[string]interface{})
-	if !ok {
+	data := getUploadDataMap(resp)
+	if data == nil {
 		t.Fatal("Expected data in response")
 	}
 
@@ -228,24 +250,22 @@ func TestGetUploadByID_NotFound(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", http.StatusNotFound, rec.Code)
 	}
 
-	var response map[string]interface{}
-	json.Unmarshal(rec.Body.Bytes(), &response)
+	resp, _ := parseUploadResponse(rec.Body.Bytes())
 
-	if response["success"] != false {
+	if resp.Success {
 		t.Error("Expected success: false")
 	}
-	if response["error"] != "Upload not found" {
-		t.Errorf("Expected 'Upload not found' error, got %v", response["error"])
+	if resp.Error == nil || resp.Error.Message != "Upload not found" {
+		t.Errorf("Expected 'Upload not found' error, got %v", resp.Error)
 	}
 }
 
 func TestGetUploadByID_AccessDenied(t *testing.T) {
 	handler, mockRepo := setupUploadTestHandler()
 
-	// Add upload for user 2
 	mockRepo.AddUpload(&upload.FileUpload{
 		ID:               1,
-		UserID:           2, // Different user
+		UserID:           2,
 		Filename:         "test1.png",
 		OriginalFilename: "original1.png",
 		ContentType:      "image/png",
@@ -258,7 +278,7 @@ func TestGetUploadByID_AccessDenied(t *testing.T) {
 	c, rec := createUploadTestContext(e, http.MethodGet, "/api/uploads/1", nil, "")
 	c.SetParamNames("id")
 	c.SetParamValues("1")
-	c.Set("user", &auth.TokenClaims{UserID: 1, Username: "testuser"}) // User 1 trying to access
+	c.Set("user", &auth.TokenClaims{UserID: 1, Username: "testuser"})
 
 	err := handler.GetUploadByID(c)
 	if err != nil {
@@ -269,22 +289,22 @@ func TestGetUploadByID_AccessDenied(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", http.StatusForbidden, rec.Code)
 	}
 
-	var response map[string]interface{}
-	json.Unmarshal(rec.Body.Bytes(), &response)
+	resp, _ := parseUploadResponse(rec.Body.Bytes())
 
-	if response["error"] != "Access denied" {
-		t.Errorf("Expected 'Access denied' error, got %v", response["error"])
+	if resp.Success {
+		t.Error("Expected success: false")
+	}
+	if resp.Error == nil || resp.Error.Message != "Access denied" {
+		t.Errorf("Expected 'Access denied' error, got %v", resp.Error)
 	}
 }
 
-// Test file size validation
 func TestMaxFileSize(t *testing.T) {
 	if upload.MaxFileSize != 8*1024*1024 {
 		t.Errorf("Expected MaxFileSize to be 8MB (8388608), got %d", upload.MaxFileSize)
 	}
 }
 
-// Test allowed image types
 func TestAllowedImageTypes(t *testing.T) {
 	expectedTypes := []string{
 		"image/jpeg",
@@ -302,7 +322,6 @@ func TestAllowedImageTypes(t *testing.T) {
 		}
 	}
 
-	// Test that invalid types are not allowed
 	invalidTypes := []string{"text/plain", "application/json", "video/mp4"}
 	for _, contentType := range invalidTypes {
 		if upload.AllowedImageTypes[contentType] {
@@ -311,7 +330,6 @@ func TestAllowedImageTypes(t *testing.T) {
 	}
 }
 
-// Test error messages
 func TestUploadErrors(t *testing.T) {
 	if upload.ErrInvalidContentType.Error() != "uploaded file must be an image" {
 		t.Errorf("Unexpected ErrInvalidContentType message: %v", upload.ErrInvalidContentType)
@@ -324,7 +342,6 @@ func TestUploadErrors(t *testing.T) {
 	}
 }
 
-// Test MockRepository
 func TestUploadMockRepository_CreateAndGet(t *testing.T) {
 	repo := NewMockUploadRepository()
 
@@ -337,7 +354,6 @@ func TestUploadMockRepository_CreateAndGet(t *testing.T) {
 		TempPath:         "/tmp/test.png",
 	}
 
-	// Create
 	created, err := repo.CreateFileUpload(uploadRecord)
 	if err != nil {
 		t.Fatalf("CreateFileUpload failed: %v", err)
@@ -346,7 +362,6 @@ func TestUploadMockRepository_CreateAndGet(t *testing.T) {
 		t.Error("Expected ID to be set")
 	}
 
-	// Get by ID
 	retrieved, found := repo.GetFileUploadByID(created.ID)
 	if !found {
 		t.Fatal("Expected to find upload")
@@ -355,7 +370,6 @@ func TestUploadMockRepository_CreateAndGet(t *testing.T) {
 		t.Errorf("Expected filename 'test.png', got '%s'", retrieved.Filename)
 	}
 
-	// Get by user ID
 	uploads, err := repo.GetFileUploadsByUserID(1)
 	if err != nil {
 		t.Fatalf("GetFileUploadsByUserID failed: %v", err)
@@ -382,17 +396,14 @@ func TestUploadMockRepository_Reset(t *testing.T) {
 	}
 }
 
-// Integration-style test for upload handler (requires temp file system)
 func TestUpload_ValidImage(t *testing.T) {
-	// Skip if in CI environment or cannot create temp files
 	tempDir := t.TempDir()
 
 	handler, _ := setupUploadTestHandler()
 
-	// Create a valid image file content
 	imgContent := createTestImageContent()
 
-	body, contentType := createMultipartForm("image", "test.png", imgContent)
+	body, contentType := createMultipartForm("data", "test.png", imgContent)
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodPost, "/api/upload", body)
@@ -401,19 +412,11 @@ func TestUpload_ValidImage(t *testing.T) {
 	c := e.NewContext(req, rec)
 	c.Set("user", &auth.TokenClaims{UserID: 1, Username: "testuser"})
 
-	// Note: This will fail because saveMediaFile uses cmd.ResolvePath
-	// which depends on project structure. For full integration tests,
-	// you would need to mock the file system or set up proper paths.
 	_ = handler.Upload(c)
-
-	// For unit testing purposes, we just verify the handler doesn't panic
-	// Full integration tests would be done separately with proper setup
-	_ = tempDir // Suppress unused warning
+	_ = tempDir
 }
 
-// Test for validateUploadFile with actual file content
 func TestValidateUploadFile_InvalidContentType(t *testing.T) {
-	// Create a temporary file with text content
 	tempDir := t.TempDir()
 	tempFile := filepath.Join(tempDir, "test.txt")
 	err := os.WriteFile(tempFile, []byte("This is not an image"), 0644)
@@ -421,7 +424,6 @@ func TestValidateUploadFile_InvalidContentType(t *testing.T) {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
 
-	// Open the file and create a multipart header
 	file, err := os.Open(tempFile)
 	if err != nil {
 		t.Fatalf("Failed to open temp file: %v", err)
@@ -430,29 +432,24 @@ func TestValidateUploadFile_InvalidContentType(t *testing.T) {
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	part, _ := writer.CreateFormFile("image", "test.txt")
+	part, _ := writer.CreateFormFile("data", "test.txt")
 	io.Copy(part, file)
 	writer.Close()
 
-	// Parse the multipart form
 	req := httptest.NewRequest(http.MethodPost, "/upload", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	_, fileHeader, err := req.FormFile("image")
+	_, fileHeader, err := req.FormFile("data")
 	if err != nil {
 		t.Fatalf("Failed to get form file: %v", err)
 	}
 
-	// Validate - should fail because it's not an image
-	// Note: validateUploadFile is not exported, so we test through handler
 	_ = fileHeader
 }
 
-// Benchmark tests
 func BenchmarkGetUserUploads(b *testing.B) {
 	handler, mockRepo := setupUploadTestHandler()
 
-	// Add some test uploads
 	for i := 0; i < 100; i++ {
 		mockRepo.AddUpload(&upload.FileUpload{
 			UserID:           1,

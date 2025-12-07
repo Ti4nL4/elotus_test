@@ -15,14 +15,12 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
-// SetupRoutes configures and starts the HTTP server
 func (m *Models) SetupRoutes() {
 	e := echo.New()
 	e.HideBanner = true
+	m.echo = e
 
-	// Global middleware - use custom zerolog middleware
 	e.Use(custommiddleware.RequestLoggerWithSkipper(func(c echo.Context) bool {
-		// Skip logging for static files
 		path := c.Request().URL.Path
 		return strings.HasPrefix(path, "/media/") ||
 			strings.HasSuffix(path, ".css") ||
@@ -32,26 +30,25 @@ func (m *Models) SetupRoutes() {
 	e.Use(custommiddleware.RecoverWithLogger())
 	e.Use(middleware.CORS())
 
-	// Rate limit middleware for auth endpoints
 	authRateLimit := custommiddleware.RateLimitByIP(m.bredisClient, 10, time.Minute)
 
-	// Public routes - define these BEFORE static files
+	jwtMiddleware := custommiddleware.JWTMiddleware(func(token string) (interface{}, error) {
+		return m.jwtService.ValidateToken(token)
+	})
+
 	e.GET("/health", m.authHandler.HealthCheck)
 	e.POST("/register", m.authHandler.Register, authRateLimit)
 	e.POST("/login", m.authHandler.Login, authRateLimit)
 
-	// Config endpoint for HTML to get API settings
 	e.GET("/config.js", configHandler)
 
-	// Serve uploaded files from tmp folder (use /media to avoid conflict with uploads.html)
 	mediaPath := cmd.ResolvePath("tmp")
 	e.Static("/media", mediaPath)
 
-	// Protected routes (require authentication)
+	e.POST("/upload", m.uploadHandler.Upload, jwtMiddleware)
+
 	protected := e.Group("/api")
-	protected.Use(custommiddleware.JWTMiddleware(func(token string) (interface{}, error) {
-		return m.jwtService.ValidateToken(token)
-	}))
+	protected.Use(jwtMiddleware)
 	{
 		protected.POST("/revoke", m.authHandler.RevokeToken)
 		protected.GET("/protected", m.authHandler.Protected)
@@ -60,17 +57,16 @@ func (m *Models) SetupRoutes() {
 		protected.GET("/uploads/:id", m.uploadHandler.GetUploadByID)
 	}
 
-	// Serve static HTML files - LAST so it doesn't override API routes
 	htmlPath := cmd.ResolvePath("html")
 	e.Static("/", htmlPath)
 
-	// Start server
 	serverAddr := ":" + env.E.GetServerPort()
 	logger.Infof("Server starting on %s...", serverAddr)
 	logger.Info("Available endpoints:")
 	logger.Info("  GET  /              - Web UI for testing")
 	logger.Info("  POST /register      - Register a new user")
 	logger.Info("  POST /login         - Login and get JWT token")
+	logger.Info("  POST /upload        - Upload image (requires auth, field: 'data')")
 	logger.Info("  POST /api/revoke    - Revoke tokens (requires auth)")
 	logger.Info("  GET  /api/protected - Protected endpoint (requires auth)")
 	logger.Info("  POST /api/upload    - Upload image file (requires auth, max 8MB)")
@@ -79,20 +75,16 @@ func (m *Models) SetupRoutes() {
 	logger.Info("  GET  /health        - Health check")
 
 	go func() {
-		if err := e.Start(serverAddr); err != nil {
+		if err := e.Start(serverAddr); err != nil && err.Error() != "http: Server closed" {
 			logger.Errorf("Server stopped: %v", err)
 		}
 	}()
 }
 
-// configHandler returns JavaScript config for HTML pages
 func configHandler(c echo.Context) error {
-	// Get API base URL from env config
 	apiBase := env.E.GetAPIBaseURL()
 
-	// Return as JavaScript
-	js := fmt.Sprintf(`// Auto-generated config from server
-const CONFIG = {
+	js := fmt.Sprintf(`const CONFIG = {
     API_BASE: "%s",
     SERVER_NAME: "%s",
     ENVIRONMENT: "%s"

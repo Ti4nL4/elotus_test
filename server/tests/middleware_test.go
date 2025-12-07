@@ -8,14 +8,22 @@ import (
 	"testing"
 
 	"elotus_test/server/middleware"
+	"elotus_test/server/response"
 
 	"github.com/labstack/echo/v4"
 )
 
-// mockClaims for testing
 type mockClaims struct {
 	UserID   int64
 	Username string
+}
+
+func parseMiddlewareResponse(body []byte) (*response.Response, error) {
+	var resp response.Response
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 func TestJWTMiddleware_Success(t *testing.T) {
@@ -51,10 +59,10 @@ func TestJWTMiddleware_Success(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 
-	var response map[string]interface{}
-	json.Unmarshal(rec.Body.Bytes(), &response)
-	if response["username"] != "testuser" {
-		t.Errorf("Expected username 'testuser', got: %v", response["username"])
+	var resp map[string]interface{}
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp["username"] != "testuser" {
+		t.Errorf("Expected username 'testuser', got: %v", resp["username"])
 	}
 }
 
@@ -67,7 +75,6 @@ func TestJWTMiddleware_MissingAuthHeader(t *testing.T) {
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
-	// No Authorization header
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -84,10 +91,12 @@ func TestJWTMiddleware_MissingAuthHeader(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", http.StatusUnauthorized, rec.Code)
 	}
 
-	var response map[string]interface{}
-	json.Unmarshal(rec.Body.Bytes(), &response)
-	if response["error"] != "Authorization header required" {
-		t.Errorf("Expected auth header error, got: %v", response["error"])
+	resp, _ := parseMiddlewareResponse(rec.Body.Bytes())
+	if resp.Success {
+		t.Error("Expected success=false for missing auth header")
+	}
+	if resp.Error == nil || resp.Error.Message != "Authorization header required" {
+		t.Errorf("Expected auth header error, got: %v", resp.Error)
 	}
 }
 
@@ -117,10 +126,12 @@ func TestJWTMiddleware_InvalidFormat_NoBearer(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", http.StatusUnauthorized, rec.Code)
 	}
 
-	var response map[string]interface{}
-	json.Unmarshal(rec.Body.Bytes(), &response)
-	if response["error"] != "Invalid authorization header format" {
-		t.Errorf("Expected format error, got: %v", response["error"])
+	resp, _ := parseMiddlewareResponse(rec.Body.Bytes())
+	if resp.Success {
+		t.Error("Expected success=false for invalid format")
+	}
+	if resp.Error == nil || resp.Error.Message != "Invalid authorization header format" {
+		t.Errorf("Expected format error, got: %v", resp.Error)
 	}
 }
 
@@ -177,10 +188,11 @@ func TestJWTMiddleware_InvalidToken(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", http.StatusUnauthorized, rec.Code)
 	}
 
-	var response map[string]interface{}
-	json.Unmarshal(rec.Body.Bytes(), &response)
-	errMsg, ok := response["error"].(string)
-	if !ok || errMsg == "" {
+	resp, _ := parseMiddlewareResponse(rec.Body.Bytes())
+	if resp.Success {
+		t.Error("Expected success=false for invalid token")
+	}
+	if resp.Error == nil || resp.Error.Message == "" {
 		t.Error("Expected error message in response")
 	}
 }
@@ -226,7 +238,6 @@ func TestJWTMiddleware_BearerCaseInsensitive(t *testing.T) {
 }
 
 func TestRateLimitByIP_NoRedis(t *testing.T) {
-	// When redis is nil, middleware should pass through
 	mw := middleware.RateLimitByIP(nil, 10, 0)
 
 	e := echo.New()
@@ -247,10 +258,9 @@ func TestRateLimitByIP_NoRedis(t *testing.T) {
 		t.Errorf("Expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 
-	var response map[string]interface{}
-	json.Unmarshal(rec.Body.Bytes(), &response)
-	if response["success"] != true {
+	var resp map[string]interface{}
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp["success"] != true {
 		t.Error("Expected success response")
 	}
 }
-

@@ -7,17 +7,14 @@ import (
 	"elotus_test/server/bsql"
 )
 
-// PostgresRepository implements the Repository interface for PostgreSQL
 type PostgresRepository struct {
 	db *bsql.DB
 }
 
-// NewPostgresRepository creates a new PostgresRepository
 func NewPostgresRepository(db *bsql.DB) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 
-// CreateFileUpload inserts a new file upload record into the database
 func (r *PostgresRepository) CreateFileUpload(upload *FileUpload) (*FileUpload, error) {
 	query := `
 		INSERT INTO file_uploads (
@@ -49,7 +46,6 @@ func (r *PostgresRepository) CreateFileUpload(upload *FileUpload) (*FileUpload, 
 	return upload, nil
 }
 
-// GetFileUploadByID retrieves a file upload by its ID
 func (r *PostgresRepository) GetFileUploadByID(id int64) (*FileUpload, bool) {
 	query := `
 		SELECT id, user_id, filename, original_filename, content_type, file_size,
@@ -87,7 +83,6 @@ func (r *PostgresRepository) GetFileUploadByID(id int64) (*FileUpload, bool) {
 	return upload, true
 }
 
-// GetFileUploadsByUserID retrieves all file uploads for a specific user
 func (r *PostgresRepository) GetFileUploadsByUserID(userID int64) ([]*FileUpload, error) {
 	query := `
 		SELECT id, user_id, filename, original_filename, content_type, file_size,

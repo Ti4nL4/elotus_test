@@ -7,7 +7,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// DatabaseConfig holds database configuration
 type DatabaseConfig struct {
 	Type              string `yaml:"type"`
 	Host              string `yaml:"host"`
@@ -19,7 +18,6 @@ type DatabaseConfig struct {
 	MaxOpenConnection int    `yaml:"maxOpenConnection"`
 }
 
-// LoadDatabaseConfig loads database configuration from yaml file
 func LoadDatabaseConfig(path string) (*DatabaseConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -31,7 +29,6 @@ func LoadDatabaseConfig(path string) (*DatabaseConfig, error) {
 		return nil, fmt.Errorf("failed to parse database config file: %w", err)
 	}
 
-	// Set defaults
 	if config.Type == "" {
 		config.Type = "postgres"
 	}

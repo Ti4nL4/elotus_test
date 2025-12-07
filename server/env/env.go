@@ -1,13 +1,12 @@
 package env
 
 import (
+	"os"
 	"time"
 )
 
-// E is the global environment config
 var E *ENV
 
-// ENV holds the environment configuration
 type ENV struct {
 	Environment            string `yaml:"environment"`
 	DatabaseConfigFilePath string `yaml:"database_config_file_path"`
@@ -28,25 +27,21 @@ type ENV struct {
 	Features *Features `yaml:"features"`
 }
 
-// BackendHost holds backend server configuration
 type BackendHost struct {
 	HTTPHost   string `yaml:"host_http"`
 	SocketHost string `yaml:"host_socket"`
 	Port       string `yaml:"port"`
 }
 
-// FrontendHost holds frontend configuration
 type FrontendHost struct {
 	APIBaseURL string `yaml:"api_base_url"`
 }
 
-// Features holds feature flags
 type Features struct {
 	EnableRegistration bool `yaml:"enable_registration"`
 	EnableTokenRevoke  bool `yaml:"enable_token_revoke"`
 }
 
-// GetJWTDuration returns JWT token duration as time.Duration
 func (env *ENV) GetJWTDuration() time.Duration {
 	if env == nil || env.JWTTokenDuration == "" {
 		return 24 * time.Hour
@@ -58,7 +53,6 @@ func (env *ENV) GetJWTDuration() time.Duration {
 	return duration
 }
 
-// GetRevokeDuration returns token revocation duration as time.Duration
 func (env *ENV) GetRevokeDuration() time.Duration {
 	if env == nil || env.TokenRevokeDuration == "" {
 		return 24 * time.Hour
@@ -70,7 +64,6 @@ func (env *ENV) GetRevokeDuration() time.Duration {
 	return duration
 }
 
-// GetServerPort returns the server port
 func (env *ENV) GetServerPort() string {
 	if env == nil || env.Backend == nil || env.Backend.Port == "" {
 		return "8080"
@@ -78,7 +71,6 @@ func (env *ENV) GetServerPort() string {
 	return env.Backend.Port
 }
 
-// GetAPIBaseURL returns the API base URL for frontend
 func (env *ENV) GetAPIBaseURL() string {
 	if env == nil || env.Frontend == nil || env.Frontend.APIBaseURL == "" {
 		return "http://localhost:8080"
@@ -86,12 +78,10 @@ func (env *ENV) GetAPIBaseURL() string {
 	return env.Frontend.APIBaseURL
 }
 
-// IsDevelopment returns true if environment is development
 func (env *ENV) IsDevelopment() bool {
 	return env != nil && env.Environment == "development"
 }
 
-// SetDefaults sets default values for ENV
 func (env *ENV) SetDefaults() {
 	if env.Environment == "" {
 		env.Environment = "development"
@@ -114,8 +104,13 @@ func (env *ENV) SetDefaults() {
 	if env.Frontend.APIBaseURL == "" {
 		env.Frontend.APIBaseURL = "http://localhost:" + env.Backend.Port
 	}
+
+	// JWT key: environment variable > config file (required, no default)
+	if key := os.Getenv("JWT_SIGNING_KEY"); key != "" {
+		env.JWTSigningKey = key
+	}
 	if env.JWTSigningKey == "" {
-		env.JWTSigningKey = "your-256-bit-secret-key-here-change-in-production"
+		panic("JWT_SIGNING_KEY is required. Set it via environment variable or config file.")
 	}
 	if env.JWTTokenDuration == "" {
 		env.JWTTokenDuration = "24h"

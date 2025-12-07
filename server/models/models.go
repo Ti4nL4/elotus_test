@@ -1,6 +1,7 @@
 package models
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -14,13 +15,14 @@ import (
 	"elotus_test/server/models/user"
 	"elotus_test/server/psql"
 
+	"github.com/labstack/echo/v4"
 	"gopkg.in/yaml.v3"
 )
 
-// Models holds all application components
 type Models struct {
 	db           *bsql.DB
 	bredisClient *bredis.Client
+	echo         *echo.Echo
 
 	userStore     user.Repository
 	uploadStore   upload.Repository
@@ -29,7 +31,6 @@ type Models struct {
 	uploadHandler *upload.Handler
 }
 
-// RedisConfig holds Redis configuration
 type RedisConfig struct {
 	Host     string `yaml:"host"`
 	Port     string `yaml:"port"`
@@ -37,7 +38,6 @@ type RedisConfig struct {
 	DB       int    `yaml:"db"`
 }
 
-// NewModels creates and initializes all application components
 func NewModels(cmdMode bool) *Models {
 	m := &Models{}
 
@@ -45,7 +45,6 @@ func NewModels(cmdMode bool) *Models {
 	logger.Info("🚀 Starting Server Initialization...")
 	logger.Info("════════════════════════════════════════════════════════")
 
-	// Database is required
 	logger.Info("")
 	logger.Info("🐘 Connecting to PostgreSQL...")
 
@@ -70,7 +69,6 @@ func NewModels(cmdMode bool) *Models {
 	)
 	logger.Info("✅ PostgreSQL connected!")
 
-	// Run migrations
 	logger.Info("")
 	logger.Info("📦 Running database migrations...")
 	migPath := cmd.ResolvePath("db/migrations")
@@ -79,18 +77,15 @@ func NewModels(cmdMode bool) *Models {
 	}
 	logger.Info("✅ Migrations completed!")
 
-	// Connect to Redis (optional)
 	logger.Info("")
 	m.bredisClient = m.initRedis()
 
-	// Initialize repositories
 	logger.Info("")
 	logger.Info("📂 Initializing repositories...")
 	m.userStore = user.NewPostgresRepository(m.db)
 	m.uploadStore = upload.NewPostgresRepository(m.db)
 	logger.Info("✅ Repositories initialized!")
 
-	// Initialize JWT service with revocation store
 	logger.Info("")
 	logger.Info("🔐 Initializing JWT service...")
 	revocationStore := auth.NewTokenRevocationStore(m.db, m.bredisClient)
@@ -102,10 +97,9 @@ func NewModels(cmdMode bool) *Models {
 	logger.Infof("   Token Duration: %v", env.E.GetJWTDuration())
 	logger.Info("✅ JWT service initialized!")
 
-	// Initialize handlers
 	logger.Info("")
 	logger.Info("🎯 Initializing handlers...")
-	m.authHandler = auth.NewHandler(m.userStore, m.jwtService, m.bredisClient)
+	m.authHandler = auth.NewHandler(m.db, m.userStore, m.jwtService, m.bredisClient)
 	m.uploadHandler = upload.NewHandler(m.db, m.uploadStore, m.bredisClient)
 	logger.Info("✅ Handlers initialized!")
 
@@ -158,10 +152,9 @@ func (m *Models) initRedis() *bredis.Client {
 		return nil
 	}
 
-	// Test Redis with a simple SET/GET
 	testKey := "startup_test"
 	testValue := "connected"
-	if err := client.Set(testKey, testValue, 5*60*1000000000); err == nil { // 5 seconds TTL
+	if err := client.Set(testKey, testValue, 5*60*1000000000); err == nil {
 		var result string
 		if client.Get(testKey, &result) == nil && result == testValue {
 			logger.Info("✅ Redis connected and working!")
@@ -176,10 +169,36 @@ func (m *Models) initRedis() *bredis.Client {
 	return client
 }
 
-// RunCmd runs command mode
 func (m *Models) RunCmd(c string) {
 	switch c {
 	default:
 		logger.Warnf("Unknown command: %s", c)
 	}
+}
+
+func (m *Models) Shutdown(ctx context.Context) error {
+	logger.Info("Closing connections...")
+
+	if m.echo != nil {
+		if err := m.echo.Shutdown(ctx); err != nil {
+			logger.Errorf("Error shutting down HTTP server: %v", err)
+		}
+		logger.Info("✅ HTTP server stopped")
+	}
+
+	if m.bredisClient != nil {
+		if err := m.bredisClient.Close(); err != nil {
+			logger.Errorf("Error closing Redis: %v", err)
+		}
+		logger.Info("✅ Redis connection closed")
+	}
+
+	if m.db != nil {
+		if err := m.db.Close(); err != nil {
+			logger.Errorf("Error closing database: %v", err)
+		}
+		logger.Info("✅ Database connection closed")
+	}
+
+	return nil
 }

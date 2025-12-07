@@ -7,7 +7,6 @@ import (
 	"elotus_test/server/models/user"
 )
 
-// Ensure MockUserRepository implements user.Repository
 var _ user.Repository = (*MockUserRepository)(nil)
 
 func TestMockRepository_CreateUser_Success(t *testing.T) {
@@ -35,13 +34,11 @@ func TestMockRepository_CreateUser_Success(t *testing.T) {
 func TestMockRepository_CreateUser_Duplicate(t *testing.T) {
 	repo := NewMockUserRepository()
 
-	// Create first user
 	_, err := repo.CreateUser("testuser", "password1")
 	if err != nil {
 		t.Fatalf("First CreateUser failed: %v", err)
 	}
 
-	// Try to create duplicate
 	_, err = repo.CreateUser("testuser", "password2")
 	if err != user.ErrUserExists {
 		t.Errorf("Expected ErrUserExists, got %v", err)
@@ -50,7 +47,7 @@ func TestMockRepository_CreateUser_Duplicate(t *testing.T) {
 
 func TestMockRepository_CreateUser_WithError(t *testing.T) {
 	repo := NewMockUserRepository()
-	repo.CreateUserError = user.ErrUserNotFound // Set a custom error
+	repo.CreateUserError = user.ErrUserNotFound
 
 	_, err := repo.CreateUser("testuser", "password")
 	if err != user.ErrUserNotFound {
@@ -61,10 +58,8 @@ func TestMockRepository_CreateUser_WithError(t *testing.T) {
 func TestMockRepository_GetUserByUsername_Found(t *testing.T) {
 	repo := NewMockUserRepository()
 
-	// Create user
 	repo.CreateUser("testuser", "password")
 
-	// Get user
 	u, found := repo.GetUserByUsername("testuser")
 	if !found {
 		t.Fatal("Expected to find user")
@@ -89,10 +84,8 @@ func TestMockRepository_GetUserByUsername_NotFound(t *testing.T) {
 func TestMockRepository_GetUserByID_Found(t *testing.T) {
 	repo := NewMockUserRepository()
 
-	// Create user
 	created, _ := repo.CreateUser("testuser", "password")
 
-	// Get user by ID
 	u, found := repo.GetUserByID(created.ID)
 	if !found {
 		t.Fatal("Expected to find user")
@@ -117,16 +110,13 @@ func TestMockRepository_GetUserByID_NotFound(t *testing.T) {
 func TestMockRepository_UpdateLastLogin(t *testing.T) {
 	repo := NewMockUserRepository()
 
-	// Create user
 	created, _ := repo.CreateUser("testuser", "password")
 
-	// Update last login
 	err := repo.UpdateLastLogin(created.ID)
 	if err != nil {
 		t.Fatalf("UpdateLastLogin failed: %v", err)
 	}
 
-	// Verify
 	u, _ := repo.GetUserByID(created.ID)
 	if u.LastLoginAt == nil {
 		t.Error("Expected LastLoginAt to be set")
@@ -136,7 +126,6 @@ func TestMockRepository_UpdateLastLogin(t *testing.T) {
 func TestMockRepository_UpdateLastLogin_NonExistentUser(t *testing.T) {
 	repo := NewMockUserRepository()
 
-	// Should not error for non-existent user
 	err := repo.UpdateLastLogin(999)
 	if err != nil {
 		t.Errorf("Expected no error for non-existent user, got %v", err)
@@ -154,7 +143,6 @@ func TestMockRepository_AddUser(t *testing.T) {
 	}
 	repo.AddUser(u)
 
-	// Verify by ID
 	retrieved, found := repo.GetUserByID(100)
 	if !found {
 		t.Fatal("Expected to find manually added user")
@@ -163,8 +151,7 @@ func TestMockRepository_AddUser(t *testing.T) {
 		t.Errorf("Expected username 'manualuser', got '%s'", retrieved.Username)
 	}
 
-	// Verify by username
-	retrieved, found = repo.GetUserByUsername("manualuser")
+	_, found = repo.GetUserByUsername("manualuser")
 	if !found {
 		t.Fatal("Expected to find manually added user by username")
 	}
@@ -173,13 +160,10 @@ func TestMockRepository_AddUser(t *testing.T) {
 func TestMockRepository_Reset(t *testing.T) {
 	repo := NewMockUserRepository()
 
-	// Create user
 	repo.CreateUser("testuser", "password")
 
-	// Reset
 	repo.Reset()
 
-	// Verify user is gone
 	_, found := repo.GetUserByUsername("testuser")
 	if found {
 		t.Error("Expected user to be cleared after reset")
@@ -190,7 +174,6 @@ func TestMockRepository_ConcurrentAccess(t *testing.T) {
 	repo := NewMockUserRepository()
 	done := make(chan bool)
 
-	// Multiple goroutines creating users
 	for i := 0; i < 10; i++ {
 		go func(id int) {
 			username := "user" + string(rune('a'+id))
@@ -200,7 +183,6 @@ func TestMockRepository_ConcurrentAccess(t *testing.T) {
 		}(i)
 	}
 
-	// Wait for all goroutines
 	for i := 0; i < 10; i++ {
 		<-done
 	}
@@ -221,7 +203,6 @@ func TestMockRepository_NextID_AutoIncrement(t *testing.T) {
 func TestMockRepository_AddUser_UpdatesNextID(t *testing.T) {
 	repo := NewMockUserRepository()
 
-	// Add user with high ID
 	repo.AddUser(&user.User{
 		ID:        100,
 		Username:  "user100",
@@ -229,14 +210,12 @@ func TestMockRepository_AddUser_UpdatesNextID(t *testing.T) {
 		CreatedAt: time.Now(),
 	})
 
-	// Create new user - should get ID > 100
 	newUser, _ := repo.CreateUser("newuser", "password")
 	if newUser.ID <= 100 {
 		t.Errorf("Expected ID > 100, got %d", newUser.ID)
 	}
 }
 
-// Test error types
 func TestUserErrors(t *testing.T) {
 	if user.ErrUserExists.Error() != "username already exists" {
 		t.Errorf("Unexpected ErrUserExists message: %v", user.ErrUserExists)
@@ -246,7 +225,6 @@ func TestUserErrors(t *testing.T) {
 	}
 }
 
-// Test User struct
 func TestUserStruct(t *testing.T) {
 	now := time.Now()
 	lastLogin := now.Add(-time.Hour)
@@ -275,7 +253,6 @@ func TestUserStruct(t *testing.T) {
 	}
 }
 
-// Benchmark tests
 func BenchmarkMockRepository_CreateUser(b *testing.B) {
 	repo := NewMockUserRepository()
 
@@ -289,7 +266,6 @@ func BenchmarkMockRepository_CreateUser(b *testing.B) {
 func BenchmarkMockRepository_GetUserByUsername(b *testing.B) {
 	repo := NewMockUserRepository()
 
-	// Setup - create users
 	for i := 0; i < 100; i++ {
 		username := "user" + string(rune(i%26+'a')) + string(rune(i/26+'a'))
 		repo.CreateUser(username, "password")
@@ -304,7 +280,6 @@ func BenchmarkMockRepository_GetUserByUsername(b *testing.B) {
 func BenchmarkMockRepository_GetUserByID(b *testing.B) {
 	repo := NewMockUserRepository()
 
-	// Setup - create users
 	for i := 0; i < 100; i++ {
 		username := "user" + string(rune(i%26+'a')) + string(rune(i/26+'a'))
 		repo.CreateUser(username, "password")

@@ -10,17 +10,14 @@ import (
 	_ "github.com/lib/pq"
 )
 
-// DB wraps sql.DB with additional functionality
 type DB struct {
 	*sql.DB
 }
 
-// NewDB creates a new DB wrapper
 func NewDB(db *sql.DB) *DB {
 	return &DB{DB: db}
 }
 
-// Open opens a database connection with the given parameters
 func Open(username, password, host, port, dbname string, maxIdleConnection, maxOpenConnection int) *DB {
 	db := openSQL(username, password, host, port, dbname)
 	db.SetMaxIdleConns(maxIdleConnection)
@@ -67,7 +64,6 @@ func openSQL(username, password, host, port, dbname string) *sql.DB {
 	return db
 }
 
-// Insert inserts a row and returns the new ID
 func (db *DB) Insert(tableName string, dict map[string]interface{}) (id int64, err error) {
 	var keyBuffer bytes.Buffer
 	var valueBuffer bytes.Buffer

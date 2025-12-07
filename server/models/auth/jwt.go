@@ -7,34 +7,29 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// Config holds JWT configuration
 type Config struct {
 	SecretKey     []byte
 	TokenDuration time.Duration
 }
 
-// DefaultConfig returns default JWT configuration
 func DefaultConfig() *Config {
 	return &Config{
-		SecretKey:     []byte("your-256-bit-secret-key-here-change-in-production"),
+		SecretKey:     nil, // Must be provided via config
 		TokenDuration: 24 * time.Hour,
 	}
 }
 
-// TokenClaims represents the JWT claims
 type TokenClaims struct {
 	UserID   int64  `json:"user_id"`
 	Username string `json:"username"`
 	jwt.RegisteredClaims
 }
 
-// JWTService handles JWT operations
 type JWTService struct {
 	config          *Config
 	revocationStore *TokenRevocationStore
 }
 
-// NewJWTService creates a new JWT service
 func NewJWTService(config *Config, revocationStore *TokenRevocationStore) *JWTService {
 	if config == nil {
 		config = DefaultConfig()
@@ -45,7 +40,6 @@ func NewJWTService(config *Config, revocationStore *TokenRevocationStore) *JWTSe
 	}
 }
 
-// GenerateToken generates a new JWT token for a user
 func (s *JWTService) GenerateToken(userID int64, username string) (string, time.Time, error) {
 	now := time.Now()
 	expiresAt := now.Add(s.config.TokenDuration)
@@ -71,7 +65,6 @@ func (s *JWTService) GenerateToken(userID int64, username string) (string, time.
 	return tokenString, expiresAt, nil
 }
 
-// ValidateToken validates a JWT token and returns the claims
 func (s *JWTService) ValidateToken(tokenString string) (*TokenClaims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &TokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -89,7 +82,6 @@ func (s *JWTService) ValidateToken(tokenString string) (*TokenClaims, error) {
 		return nil, errors.New("invalid token")
 	}
 
-	// Check if token is revoked
 	if s.revocationStore != nil {
 		issuedAt := claims.IssuedAt.Time
 		if s.revocationStore.IsTokenRevoked(claims.UserID, issuedAt) {
@@ -100,7 +92,6 @@ func (s *JWTService) ValidateToken(tokenString string) (*TokenClaims, error) {
 	return claims, nil
 }
 
-// RevokeUserTokens revokes all tokens for a specific user
 func (s *JWTService) RevokeUserTokens(userID int64) error {
 	if s.revocationStore != nil {
 		return s.revocationStore.RevokeAllUserTokens(userID)
@@ -108,7 +99,6 @@ func (s *JWTService) RevokeUserTokens(userID int64) error {
 	return nil
 }
 
-// RevokeUserTokensBefore revokes all tokens for a user issued before the given time
 func (s *JWTService) RevokeUserTokensBefore(userID int64, before time.Time) error {
 	if s.revocationStore != nil {
 		return s.revocationStore.RevokeUserTokensBefore(userID, before)

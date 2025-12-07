@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+app
 server/app
 
 # Test binary

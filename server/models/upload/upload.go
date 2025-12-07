@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// FileUpload represents an uploaded file's metadata
 type FileUpload struct {
 	ID               int64     `json:"id"`
 	UserID           int64     `json:"user_id"`
@@ -21,14 +20,12 @@ type FileUpload struct {
 	CreatedAt        time.Time `json:"created_at"`
 }
 
-// Repository defines the interface for file upload data access
 type Repository interface {
 	CreateFileUpload(upload *FileUpload) (*FileUpload, error)
 	GetFileUploadByID(id int64) (*FileUpload, bool)
 	GetFileUploadsByUserID(userID int64) ([]*FileUpload, error)
 }
 
-// Allowed image content types
 var AllowedImageTypes = map[string]bool{
 	"image/jpeg": true,
 	"image/jpg":  true,
@@ -39,10 +36,8 @@ var AllowedImageTypes = map[string]bool{
 	"image/tiff": true,
 }
 
-// MaxFileSize is 8 megabytes
-const MaxFileSize = 8 * 1024 * 1024 // 8 MB
+const MaxFileSize = 8 * 1024 * 1024
 
-// Errors
 var (
 	ErrInvalidContentType = errors.New("uploaded file must be an image")
 	ErrFileTooLarge       = errors.New("file size exceeds 8MB limit")

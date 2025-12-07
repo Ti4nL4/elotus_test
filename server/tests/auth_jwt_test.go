@@ -58,13 +58,11 @@ func TestValidateToken_Success(t *testing.T) {
 	}
 	service := auth.NewJWTService(config, nil)
 
-	// Generate a token
 	token, _, err := service.GenerateToken(123, "testuser")
 	if err != nil {
 		t.Fatalf("GenerateToken failed: %v", err)
 	}
 
-	// Validate it
 	claims, err := service.ValidateToken(token)
 	if err != nil {
 		t.Fatalf("ValidateToken failed: %v", err)
@@ -107,13 +105,11 @@ func TestValidateToken_WrongSecret(t *testing.T) {
 	}
 	service2 := auth.NewJWTService(config2, nil)
 
-	// Generate with service1
 	token, _, err := service1.GenerateToken(123, "testuser")
 	if err != nil {
 		t.Fatalf("GenerateToken failed: %v", err)
 	}
 
-	// Try to validate with service2 (different secret)
 	_, err = service2.ValidateToken(token)
 	if err == nil {
 		t.Error("Expected error when validating with wrong secret")
@@ -123,7 +119,7 @@ func TestValidateToken_WrongSecret(t *testing.T) {
 func TestValidateToken_ExpiredToken(t *testing.T) {
 	config := &auth.Config{
 		SecretKey:     []byte("test-secret-key"),
-		TokenDuration: -time.Hour, // Negative duration = already expired
+		TokenDuration: -time.Hour,
 	}
 	service := auth.NewJWTService(config, nil)
 
@@ -158,7 +154,7 @@ func TestTokenClaims_RegisteredClaims(t *testing.T) {
 	}
 	service := auth.NewJWTService(config, nil)
 
-	// JWT timestamps are truncated to seconds, so use second-precision for comparison
+	// JWT timestamps are truncated to seconds
 	beforeGen := time.Now().Truncate(time.Second)
 	token, _, err := service.GenerateToken(123, "testuser")
 	if err != nil {
@@ -171,26 +167,22 @@ func TestTokenClaims_RegisteredClaims(t *testing.T) {
 		t.Fatalf("ValidateToken failed: %v", err)
 	}
 
-	// Check IssuedAt (with 1 second tolerance for JWT truncation)
 	issuedAt := claims.IssuedAt.Time
 	if issuedAt.Before(beforeGen) || issuedAt.After(afterGen) {
 		t.Errorf("IssuedAt should be between %v and %v, got %v", beforeGen, afterGen, issuedAt)
 	}
 
-	// Check NotBefore (with 1 second tolerance for JWT truncation)
 	notBefore := claims.NotBefore.Time
 	if notBefore.Before(beforeGen) || notBefore.After(afterGen) {
 		t.Errorf("NotBefore should be between %v and %v, got %v", beforeGen, afterGen, notBefore)
 	}
 
-	// Check ExpiresAt
 	expiresAt := claims.ExpiresAt.Time
 	expectedExpiry := issuedAt.Add(time.Hour)
 	if expiresAt.Before(expectedExpiry.Add(-time.Second)) || expiresAt.After(expectedExpiry.Add(time.Second)) {
 		t.Errorf("ExpiresAt should be around %v, got %v", expectedExpiry, expiresAt)
 	}
 
-	// Check Subject
 	if claims.Subject != "testuser" {
 		t.Errorf("Expected Subject 'testuser', got '%s'", claims.Subject)
 	}
@@ -203,7 +195,6 @@ func TestRevokeUserTokens_NoRevocationStore(t *testing.T) {
 	}
 	service := auth.NewJWTService(config, nil)
 
-	// Should not error when revocation store is nil
 	err := service.RevokeUserTokens(123)
 	if err != nil {
 		t.Errorf("RevokeUserTokens should not error without revocation store: %v", err)
@@ -217,7 +208,6 @@ func TestRevokeUserTokensBefore_NoRevocationStore(t *testing.T) {
 	}
 	service := auth.NewJWTService(config, nil)
 
-	// Should not error when revocation store is nil
 	err := service.RevokeUserTokensBefore(123, time.Now())
 	if err != nil {
 		t.Errorf("RevokeUserTokensBefore should not error without revocation store: %v", err)
@@ -231,8 +221,9 @@ func TestDefaultConfig(t *testing.T) {
 		t.Fatal("DefaultConfig should return a config")
 	}
 
-	if len(config.SecretKey) == 0 {
-		t.Error("Default SecretKey should not be empty")
+	// SecretKey must be provided via config, not hardcoded
+	if config.SecretKey != nil {
+		t.Error("Default SecretKey should be nil (must be provided via config)")
 	}
 
 	if config.TokenDuration != 24*time.Hour {
@@ -240,7 +231,6 @@ func TestDefaultConfig(t *testing.T) {
 	}
 }
 
-// Benchmark tests
 func BenchmarkGenerateToken(b *testing.B) {
 	config := &auth.Config{
 		SecretKey:     []byte("test-secret-key-for-benchmarks"),
@@ -267,4 +257,3 @@ func BenchmarkValidateToken(b *testing.B) {
 		_, _ = service.ValidateToken(token)
 	}
 }
-

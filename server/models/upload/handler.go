@@ -300,7 +300,7 @@ func (h *Handler) GetUserUploads(c echo.Context) error {
 		})
 	}
 
-	// Cache for 30 seconds
+	// Cache for 30 minutes
 	if h.redis != nil {
 		_ = h.redis.Set(cacheKey, uploadList, 30*time.Minute)
 	}

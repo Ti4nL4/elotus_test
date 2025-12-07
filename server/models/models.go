@@ -41,8 +41,13 @@ type RedisConfig struct {
 func NewModels(cmdMode bool) *Models {
 	m := &Models{}
 
+	logger.Info("════════════════════════════════════════════════════════")
+	logger.Info("🚀 Starting Server Initialization...")
+	logger.Info("════════════════════════════════════════════════════════")
+
 	// Database is required
-	logger.Info("Connecting to PostgreSQL...")
+	logger.Info("")
+	logger.Info("🐘 Connecting to PostgreSQL...")
 
 	dbConfigPath := cmd.ResolvePath(env.E.DatabaseConfigFilePath)
 	dbConfig, err := bsql.LoadDatabaseConfig(dbConfigPath)
@@ -50,9 +55,9 @@ func NewModels(cmdMode bool) *Models {
 		logger.Fatalf("Failed to load database config: %v", err)
 	}
 
-	logger.Infof("  Host: %s:%s", dbConfig.Host, dbConfig.Port)
-	logger.Infof("  Database: %s", dbConfig.Database)
-	logger.Infof("  User: %s", dbConfig.Username)
+	logger.Infof("   Host: %s:%s", dbConfig.Host, dbConfig.Port)
+	logger.Infof("   Database: %s", dbConfig.Database)
+	logger.Infof("   User: %s", dbConfig.Username)
 
 	m.db = bsql.Open(
 		dbConfig.Username,
@@ -63,33 +68,51 @@ func NewModels(cmdMode bool) *Models {
 		dbConfig.MaxIdleConnection,
 		dbConfig.MaxOpenConnection,
 	)
+	logger.Info("✅ PostgreSQL connected!")
 
 	// Run migrations
-	logger.Info("Running database migrations...")
+	logger.Info("")
+	logger.Info("📦 Running database migrations...")
 	migPath := cmd.ResolvePath("db/migrations")
 	if err := psql.MigrateUp(m.db, migPath); err != nil {
 		logger.Fatalf("Failed to run migrations: %v", err)
 	}
+	logger.Info("✅ Migrations completed!")
 
 	// Connect to Redis (optional)
+	logger.Info("")
 	m.bredisClient = m.initRedis()
 
 	// Initialize repositories
+	logger.Info("")
+	logger.Info("📂 Initializing repositories...")
 	m.userStore = user.NewPostgresRepository(m.db)
 	m.uploadStore = upload.NewPostgresRepository(m.db)
-	logger.Info("Using PostgreSQL for storage")
+	logger.Info("✅ Repositories initialized!")
 
 	// Initialize JWT service with revocation store
+	logger.Info("")
+	logger.Info("🔐 Initializing JWT service...")
 	revocationStore := auth.NewTokenRevocationStore(m.db, m.bredisClient)
 	jwtConfig := &auth.Config{
 		SecretKey:     []byte(env.E.JWTSigningKey),
 		TokenDuration: env.E.GetJWTDuration(),
 	}
 	m.jwtService = auth.NewJWTService(jwtConfig, revocationStore)
+	logger.Infof("   Token Duration: %v", env.E.GetJWTDuration())
+	logger.Info("✅ JWT service initialized!")
 
 	// Initialize handlers
+	logger.Info("")
+	logger.Info("🎯 Initializing handlers...")
 	m.authHandler = auth.NewHandler(m.userStore, m.jwtService, m.bredisClient)
 	m.uploadHandler = upload.NewHandler(m.db, m.uploadStore, m.bredisClient)
+	logger.Info("✅ Handlers initialized!")
+
+	logger.Info("")
+	logger.Info("════════════════════════════════════════════════════════")
+	logger.Info("✅ Server initialization completed!")
+	logger.Info("════════════════════════════════════════════════════════")
 
 	if !cmdMode {
 		m.SetupRoutes()
@@ -106,13 +129,13 @@ func (m *Models) initRedis() *bredis.Client {
 
 	data, err := os.ReadFile(redisConfigPath)
 	if err != nil {
-		logger.Warnf("Redis config not found, disabled")
+		logger.Warnf("⚠️  Redis config not found at %s, Redis disabled", redisConfigPath)
 		return nil
 	}
 
 	var cfg RedisConfig
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		logger.Warnf("Invalid redis config: %v", err)
+		logger.Warnf("⚠️  Invalid redis config: %v", err)
 		return nil
 	}
 
@@ -123,17 +146,33 @@ func (m *Models) initRedis() *bredis.Client {
 		cfg.Port = "6379"
 	}
 
-	logger.Info("Connecting to Redis...")
-	logger.Infof("  Host: %s:%s", cfg.Host, cfg.Port)
+	logger.Info("🔴 Connecting to Redis...")
+	logger.Infof("   Host: %s:%s", cfg.Host, cfg.Port)
+	logger.Infof("   DB: %d", cfg.DB)
+	logger.Infof("   Key Prefix: %s", env.E.ServerName)
 
 	addr := fmt.Sprintf("%s:%s", cfg.Host, cfg.Port)
 	client := bredis.New(addr, cfg.Password, cfg.DB, env.E.ServerName)
 	if client == nil {
-		logger.Warnf("Failed to connect to Redis, disabled")
+		logger.Warnf("❌ Failed to connect to Redis, Redis disabled")
 		return nil
 	}
 
-	logger.Info("Redis connected")
+	// Test Redis with a simple SET/GET
+	testKey := "startup_test"
+	testValue := "connected"
+	if err := client.Set(testKey, testValue, 5*60*1000000000); err == nil { // 5 seconds TTL
+		var result string
+		if client.Get(testKey, &result) == nil && result == testValue {
+			logger.Info("✅ Redis connected and working!")
+			logger.Info("   Features enabled:")
+			logger.Info("   • Rate Limiting (IP & Login)")
+			logger.Info("   • Token Revocation Cache")
+			logger.Info("   • Uploads List Cache")
+			client.Delete(testKey)
+		}
+	}
+
 	return client
 }
 
